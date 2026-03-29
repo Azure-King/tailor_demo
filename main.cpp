@@ -37,8 +37,7 @@ int main(int argc, char* argv[]) {
     auto* polylinesItem = new QTreeWidgetItem(modelTree);
     polylinesItem->setText(0, "多段线");
     polylinesItem->setExpanded(true);
-    // 暂时隐藏多段线节点
-    polylinesItem->setHidden(true);
+
 
     auto* polygonsItem = new QTreeWidgetItem(modelTree);
     polygonsItem->setText(0, "多边形");
@@ -64,9 +63,8 @@ int main(int argc, char* argv[]) {
     QAction* polygonAction = toolbar->addAction("Polygon");
     polygonAction->setCheckable(true);
 
-    // 暂时注释掉多段线按钮
-    //QAction* polylineAction = toolbar->addAction("Polyline");
-    //polylineAction->setCheckable(true);
+    QAction* polylineAction = toolbar->addAction("Polyline");
+    polylineAction->setCheckable(true);
 
     // 暂时注释掉 Clear 按钮
     //QAction* clearAction = toolbar->addAction("Clear");
@@ -78,16 +76,15 @@ int main(int argc, char* argv[]) {
     polygonAction->setChecked(true);
     view->setTool(Sketch2DView::Tool::Polygon);
 
-    // 暂时注释掉多段线按钮连接
-    //QObject::connect(polylineAction, &QAction::triggered, [&]() {
-    //    polylineAction->setChecked(true);
-    //    polygonAction->setChecked(false);
-    //    view->setTool(Sketch2DView::Tool::Polyline);
-    //    });
+    QObject::connect(polylineAction, &QAction::triggered, [&]() {
+        polylineAction->setChecked(true);
+        polygonAction->setChecked(false);
+        view->setTool(Sketch2DView::Tool::Polyline);
+        });
 
     QObject::connect(polygonAction, &QAction::triggered, [&]() {
         polygonAction->setChecked(true);
-        //polylineAction->setChecked(false);
+        polylineAction->setChecked(false);
         view->setTool(Sketch2DView::Tool::Polygon);
         });
 
@@ -438,17 +435,33 @@ int main(int argc, char* argv[]) {
 
                 tailor_visualization::Polygon polygon;
 
-                if (type == 0) { // polyline
+                if (type == 0) { // polyline - 导出为封闭形式 (ab, bc, cd, dc, cb, ba)
                     const auto& polylines = view->polylines();
                     if (index >= 0 && index < polylines.size()) {
                         const auto& polyline = polylines[index];
-                        for (const auto& vertex : polyline.vertices) {
+                        int n = polyline.vertices.size();
+                        // 正向边: v0->v1, v1->v2, ..., v(n-2)->v(n-1)
+                        for (int j = 0; j < n - 1; ++j) {
+                            const auto& vertex = polyline.vertices[j];
+                            const auto& nextVertex = polyline.vertices[j + 1];
                             tailor_visualization::PolygonEdge edge;
                             edge.startPoint.x = vertex.point.x();
                             edge.startPoint.y = vertex.point.y();
-                            edge.endPoint.x = vertex.point.x();
-                            edge.endPoint.y = vertex.point.y();
+                            edge.endPoint.x = nextVertex.point.x();
+                            edge.endPoint.y = nextVertex.point.y();
                             edge.bulge = vertex.bulge;
+                            polygon.edges.push_back(edge);
+                        }
+                        // 反向边: v(n-1)->v(n-2), v(n-2)->v(n-3), ..., v1->v0 (凸度取反)
+                        for (int j = n - 1; j > 0; --j) {
+                            const auto& vertex = polyline.vertices[j];
+                            const auto& prevVertex = polyline.vertices[j - 1];
+                            tailor_visualization::PolygonEdge edge;
+                            edge.startPoint.x = vertex.point.x();
+                            edge.startPoint.y = vertex.point.y();
+                            edge.endPoint.x = prevVertex.point.x();
+                            edge.endPoint.y = prevVertex.point.y();
+                            edge.bulge = -prevVertex.bulge;  // 反向边凸度取反（使用前一顶点的凸度）
                             polygon.edges.push_back(edge);
                         }
                     }

@@ -1144,7 +1144,7 @@ namespace tailor_visualization {
         if (clipPolygons_.empty() && subjectPolygons_.empty()) {
             return {};
         }
-
+        
         // 创建裁剪器
         ArcTailor tailor(arcAnalysis_);
 
@@ -1162,7 +1162,6 @@ namespace tailor_visualization {
 
         // 执行裁剪
         auto drafting = tailor.Execute();
-
         std::vector<PolygonWithHoleInfo> resultPolygons;
 
         std::function<void(const tailor::Polygon<tailor::PolyEdgeInfo>&, int)> fun =

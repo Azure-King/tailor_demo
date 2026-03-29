@@ -1803,6 +1803,49 @@ void Sketch2DView::executeBooleanOperation(tailor_visualization::BooleanOperatio
     // 批量添加 Clip 多边形
     booleanOp.AddClipPolygons(clipArcs);
 
+    // 转换 Clip 集合的多段线为封闭形式 (ab, bc, cd, dc, cb, ba)
+    std::vector<std::vector<tailor_visualization::Arc>> clipPolylineArcs;
+    for (int index : m_clipPolylines) {
+        if (index >= 0 && index < m_polylines.size()) {
+            const auto& polyline = m_polylines[index];
+            std::vector<tailor_visualization::Arc> arcs;
+            int n = polyline.vertices.size();
+            if (n < 2) continue;
+
+            // 正向边: v0->v1, v1->v2, ..., v(n-2)->v(n-1)
+            for (int j = 0; j < n - 1; ++j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j + 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(0, 100, 255, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    v1.bulge,
+                    edgeColor
+                );
+                arcs.push_back(arc);
+            }
+            // 反向边: v(n-1)->v(n-2), v(n-2)->v(n-3), ..., v1->v0 (凸度取反)
+            for (int j = n - 1; j > 0; --j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j - 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(0, 100, 255, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    -v2.bulge,  // 反向边凸度取反（使用前一顶点的凸度）
+                    edgeColor
+                );
+                arcs.push_back(arc);
+            }
+            if (!arcs.empty()) {
+                clipPolylineArcs.push_back(arcs);
+            }
+        }
+    }
+    // 批量添加 Clip 多段线（封闭形式）
+    booleanOp.AddClipPolygons(clipPolylineArcs);
+
     // 转换 Subject 集合的多边形到 BooleanOperations 格式
     std::vector<std::vector<tailor_visualization::Arc>> subjectArcs;
     for (int index : m_subjectPolygons) {
@@ -1835,6 +1878,49 @@ void Sketch2DView::executeBooleanOperation(tailor_visualization::BooleanOperatio
     }
     // 批量添加 Subject 多边形
     booleanOp.AddSubjectPolygons(subjectArcs);
+
+    // 转换 Subject 集合的多段线为封闭形式 (ab, bc, cd, dc, cb, ba)
+    std::vector<std::vector<tailor_visualization::Arc>> subjectPolylineArcs;
+    for (int index : m_subjectPolylines) {
+        if (index >= 0 && index < m_polylines.size()) {
+            const auto& polyline = m_polylines[index];
+            std::vector<tailor_visualization::Arc> arcs;
+            int n = polyline.vertices.size();
+            if (n < 2) continue;
+
+            // 正向边: v0->v1, v1->v2, ..., v(n-2)->v(n-1)
+            for (int j = 0; j < n - 1; ++j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j + 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(255, 50, 50, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    v1.bulge,
+                    edgeColor
+                );
+                arcs.push_back(arc);
+            }
+            // 反向边: v(n-1)->v(n-2), v(n-2)->v(n-3), ..., v1->v0 (凸度取反)
+            for (int j = n - 1; j > 0; --j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j - 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(255, 50, 50, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    -v2.bulge,  // 反向边凸度取反（使用前一顶点的凸度）
+                    edgeColor
+                );
+                arcs.push_back(arc);
+            }
+            if (!arcs.empty()) {
+                subjectPolylineArcs.push_back(arcs);
+            }
+        }
+    }
+    // 批量添加 Subject 多段线（封闭形式）
+    booleanOp.AddSubjectPolygons(subjectPolylineArcs);
 
     // 生成不同的颜色用于每个结果多边形
     std::vector<QColor> colorPalette = {
@@ -1926,6 +2012,39 @@ void Sketch2DView::executeBooleanOperation(
     // 批量添加 Clip 多边形
     booleanOp.AddClipPolygons(clipArcs);
 
+    // 转换 Clip 集合的多段线为封闭形式 (ab, bc, cd, dc, cb, ba)
+    std::vector<std::vector<tailor_visualization::Arc>> clipPolylineArcs;
+    for (int index : m_clipPolylines) {
+        if (index >= 0 && index < m_polylines.size()) {
+            const auto& polyline = m_polylines[index];
+            std::vector<tailor_visualization::Arc> arcs;
+            int n = polyline.vertices.size();
+            if (n < 2) continue;
+            for (int j = 0; j < n - 1; ++j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j + 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(0, 100, 255, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    v1.bulge, edgeColor);
+                arcs.push_back(arc);
+            }
+            for (int j = n - 1; j > 0; --j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j - 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(0, 100, 255, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    -v2.bulge, edgeColor);  // 反向边凸度取反
+                arcs.push_back(arc);
+            }
+            if (!arcs.empty()) clipPolylineArcs.push_back(arcs);
+        }
+    }
+    booleanOp.AddClipPolygons(clipPolylineArcs);
+
     // 转换 Subject 集合的多边形到 BooleanOperations 格式
     std::vector<std::vector<tailor_visualization::Arc>> subjectArcs;
     for (int index : m_subjectPolygons) {
@@ -1958,6 +2077,39 @@ void Sketch2DView::executeBooleanOperation(
     }
     // 批量添加 Subject 多边形
     booleanOp.AddSubjectPolygons(subjectArcs);
+
+    // 转换 Subject 集合的多段线为封闭形式
+    std::vector<std::vector<tailor_visualization::Arc>> subjectPolylineArcs;
+    for (int index : m_subjectPolylines) {
+        if (index >= 0 && index < m_polylines.size()) {
+            const auto& polyline = m_polylines[index];
+            std::vector<tailor_visualization::Arc> arcs;
+            int n = polyline.vertices.size();
+            if (n < 2) continue;
+            for (int j = 0; j < n - 1; ++j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j + 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(255, 50, 50, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    v1.bulge, edgeColor);
+                arcs.push_back(arc);
+            }
+            for (int j = n - 1; j > 0; --j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j - 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(255, 50, 50, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    -v2.bulge, edgeColor);  // 反向边凸度取反
+                arcs.push_back(arc);
+            }
+            if (!arcs.empty()) subjectPolylineArcs.push_back(arcs);
+        }
+    }
+    booleanOp.AddSubjectPolygons(subjectPolylineArcs);
 
     // 生成不同的颜色用于每个结果多边形
     std::vector<QColor> colorPalette = {
@@ -2005,6 +2157,8 @@ void Sketch2DView::executeBooleanOperation(
     update();
 }
 
+// 第二个executeBooleanOperation函数结束
+
 void Sketch2DView::executeBooleanOperation(
     tailor_visualization::BooleanOperation operation,
     const tailor_visualization::IFillType* clipFillType,
@@ -2045,6 +2199,39 @@ void Sketch2DView::executeBooleanOperation(
     // 批量添加 Clip 多边形
     booleanOp.AddClipPolygons(clipArcs);
 
+    // 转换 Clip 集合的多段线为封闭形式 (ab, bc, cd, dc, cb, ba)
+    std::vector<std::vector<tailor_visualization::Arc>> clipPolylineArcs;
+    for (int index : m_clipPolylines) {
+        if (index >= 0 && index < m_polylines.size()) {
+            const auto& polyline = m_polylines[index];
+            std::vector<tailor_visualization::Arc> arcs;
+            int n = polyline.vertices.size();
+            if (n < 2) continue;
+            for (int j = 0; j < n - 1; ++j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j + 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(0, 100, 255, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    v1.bulge, edgeColor);
+                arcs.push_back(arc);
+            }
+            for (int j = n - 1; j > 0; --j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j - 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(0, 100, 255, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    -v2.bulge, edgeColor);  // 反向边凸度取反
+                arcs.push_back(arc);
+            }
+            if (!arcs.empty()) clipPolylineArcs.push_back(arcs);
+        }
+    }
+    booleanOp.AddClipPolygons(clipPolylineArcs);
+
     // 转换 Subject 集合的多边形到 BooleanOperations 格式
     std::vector<std::vector<tailor_visualization::Arc>> subjectArcs;
     for (int index : m_subjectPolygons) {
@@ -2073,6 +2260,39 @@ void Sketch2DView::executeBooleanOperation(
     }
     // 批量添加 Subject 多边形
     booleanOp.AddSubjectPolygons(subjectArcs);
+
+    // 转换 Subject 集合的多段线为封闭形式
+    std::vector<std::vector<tailor_visualization::Arc>> subjectPolylineArcs;
+    for (int index : m_subjectPolylines) {
+        if (index >= 0 && index < m_polylines.size()) {
+            const auto& polyline = m_polylines[index];
+            std::vector<tailor_visualization::Arc> arcs;
+            int n = polyline.vertices.size();
+            if (n < 2) continue;
+            for (int j = 0; j < n - 1; ++j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j + 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(255, 50, 50, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    v1.bulge, edgeColor);
+                arcs.push_back(arc);
+            }
+            for (int j = n - 1; j > 0; --j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j - 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(255, 50, 50, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    -v2.bulge, edgeColor);  // 反向边凸度取反
+                arcs.push_back(arc);
+            }
+            if (!arcs.empty()) subjectPolylineArcs.push_back(arcs);
+        }
+    }
+    booleanOp.AddSubjectPolygons(subjectPolylineArcs);
 
     // 生成不同的颜色用于每个结果多边形
     std::vector<QColor> colorPalette = {
@@ -2110,6 +2330,7 @@ void Sketch2DView::executeBooleanOperation(
         resultPoly.isHole = polyWithHole.isHole;  // 设置内环标记
         m_booleanResults.push_back(resultPoly);
     }
+    qDebug() << "Boolean result count:" << m_booleanResults.size();
 }
 
 void Sketch2DView::executeClipPattern(const tailor_visualization::IFillType* fillType) {
@@ -2150,6 +2371,39 @@ void Sketch2DView::executeClipPattern(const tailor_visualization::IFillType* fil
     }
     // 批量添加 Clip 多边形
     booleanOp.AddClipPolygons(clipArcs);
+
+    // 转换 Clip 集合的多段线为封闭形式 (ab, bc, cd, dc, cb, ba)
+    std::vector<std::vector<tailor_visualization::Arc>> clipPolylineArcs;
+    for (int index : m_clipPolylines) {
+        if (index >= 0 && index < m_polylines.size()) {
+            const auto& polyline = m_polylines[index];
+            std::vector<tailor_visualization::Arc> arcs;
+            int n = polyline.vertices.size();
+            if (n < 2) continue;
+            for (int j = 0; j < n - 1; ++j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j + 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(0, 100, 255, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    v1.bulge, edgeColor);
+                arcs.push_back(arc);
+            }
+            for (int j = n - 1; j > 0; --j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j - 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(0, 100, 255, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    -v2.bulge, edgeColor);  // 反向边凸度取反
+                arcs.push_back(arc);
+            }
+            if (!arcs.empty()) clipPolylineArcs.push_back(arcs);
+        }
+    }
+    booleanOp.AddClipPolygons(clipPolylineArcs);
 
     // 生成不同的颜色用于每个结果多边形（蓝色系）
     std::vector<QColor> colorPalette = {
@@ -2233,6 +2487,39 @@ void Sketch2DView::executeSubjectPattern(const tailor_visualization::IFillType* 
     // 批量添加 Subject 多边形
     booleanOp.AddSubjectPolygons(subjectArcs);
 
+    // 转换 Subject 集合的多段线为封闭形式
+    std::vector<std::vector<tailor_visualization::Arc>> subjectPolylineArcs;
+    for (int index : m_subjectPolylines) {
+        if (index >= 0 && index < m_polylines.size()) {
+            const auto& polyline = m_polylines[index];
+            std::vector<tailor_visualization::Arc> arcs;
+            int n = polyline.vertices.size();
+            if (n < 2) continue;
+            for (int j = 0; j < n - 1; ++j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j + 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(255, 50, 50, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    v1.bulge, edgeColor);
+                arcs.push_back(arc);
+            }
+            for (int j = n - 1; j > 0; --j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j - 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(255, 50, 50, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    -v2.bulge, edgeColor);  // 反向边凸度取反
+                arcs.push_back(arc);
+            }
+            if (!arcs.empty()) subjectPolylineArcs.push_back(arcs);
+        }
+    }
+    booleanOp.AddSubjectPolygons(subjectPolylineArcs);
+
     // 生成不同的颜色用于每个结果多边形（红色系）
     std::vector<QColor> colorPalette = {
         QColor(255, 50, 50, 200),     // 红色
@@ -2313,6 +2600,39 @@ void Sketch2DView::executeClipPattern(
     }
     // 批量添加 Clip 多边形
     booleanOp.AddClipPolygons(clipArcs);
+
+    // 转换 Clip 集合的多段线为封闭形式 (ab, bc, cd, dc, cb, ba)
+    std::vector<std::vector<tailor_visualization::Arc>> clipPolylineArcs;
+    for (int index : m_clipPolylines) {
+        if (index >= 0 && index < m_polylines.size()) {
+            const auto& polyline = m_polylines[index];
+            std::vector<tailor_visualization::Arc> arcs;
+            int n = polyline.vertices.size();
+            if (n < 2) continue;
+            for (int j = 0; j < n - 1; ++j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j + 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(0, 100, 255, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    v1.bulge, edgeColor);
+                arcs.push_back(arc);
+            }
+            for (int j = n - 1; j > 0; --j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j - 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(0, 100, 255, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    -v2.bulge, edgeColor);  // 反向边凸度取反
+                arcs.push_back(arc);
+            }
+            if (!arcs.empty()) clipPolylineArcs.push_back(arcs);
+        }
+    }
+    booleanOp.AddClipPolygons(clipPolylineArcs);
 
     // 生成不同的颜色用于每个结果多边形（蓝色系）
     std::vector<QColor> colorPalette = {
@@ -2395,6 +2715,39 @@ void Sketch2DView::executeSubjectPattern(
     }
     // 批量添加 Subject 多边形
     booleanOp.AddSubjectPolygons(subjectArcs);
+
+    // 转换 Subject 集合的多段线为封闭形式
+    std::vector<std::vector<tailor_visualization::Arc>> subjectPolylineArcs;
+    for (int index : m_subjectPolylines) {
+        if (index >= 0 && index < m_polylines.size()) {
+            const auto& polyline = m_polylines[index];
+            std::vector<tailor_visualization::Arc> arcs;
+            int n = polyline.vertices.size();
+            if (n < 2) continue;
+            for (int j = 0; j < n - 1; ++j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j + 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(255, 50, 50, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    v1.bulge, edgeColor);
+                arcs.push_back(arc);
+            }
+            for (int j = n - 1; j > 0; --j) {
+                const auto& v1 = polyline.vertices[j];
+                const auto& v2 = polyline.vertices[j - 1];
+                QRgba64 edgeColor = QRgba64::fromRgba(255, 50, 50, 255);
+                tailor_visualization::Arc arc(
+                    tailor_visualization::ArcPoint(v1.point.x(), v1.point.y()),
+                    tailor_visualization::ArcPoint(v2.point.x(), v2.point.y()),
+                    -v2.bulge, edgeColor);  // 反向边凸度取反
+                arcs.push_back(arc);
+            }
+            if (!arcs.empty()) subjectPolylineArcs.push_back(arcs);
+        }
+    }
+    booleanOp.AddSubjectPolygons(subjectPolylineArcs);
 
     // 生成不同的颜色用于每个结果多边形（红色系）
     std::vector<QColor> colorPalette = {
