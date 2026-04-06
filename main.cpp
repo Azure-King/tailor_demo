@@ -14,11 +14,118 @@
 #include <QKeySequence>
 #include <QBrush>
 #include <QColorDialog>
+#include <QTimer>
+#include <QMessageBox>
 
 #include "Sketch2DView.h"
 #include "FourViewContainer.h"
 #include "PolygonIO.h"
 #include "BooleanOperations.h"
+
+// 更新布尔运算结果模型树的辅助函数
+void updateBooleanResultsTree(Sketch2DView* view, QTreeWidgetItem* booleanResultsItem) {
+    // 清空现有子节点
+    while (booleanResultsItem->childCount() > 0) {
+        delete booleanResultsItem->child(0);
+    }
+
+    // 获取布尔运算结果
+    const auto& booleanResults = view->booleanResults();
+
+    // 添加结果多边形到模型树
+    for (int i = 0; i < booleanResults.size(); ++i) {
+        const auto& resultPoly = booleanResults[i];
+        QString name = QString("结果%1").arg(i + 1);
+        if (resultPoly.isHole) {
+            name += " (内环)";
+        }
+
+        auto* item = new QTreeWidgetItem(booleanResultsItem);
+        item->setText(0, name);
+        item->setData(0, Qt::UserRole, 100 + i); // 100+ 表示布尔运算结果
+        item->setData(0, Qt::UserRole + 1, resultPoly.isHole); // 存储是否为内环
+
+        // 根据是否为内环设置颜色
+        if (resultPoly.isHole) {
+            item->setForeground(0, QBrush(QColor(128, 128, 128))); // 灰色表示内环
+        }
+    }
+}
+
+// 更新 Clip Pattern 结果模型树的辅助函数
+void updateClipPatternResultsTree(Sketch2DView* view, QTreeWidgetItem* clipPatternResultsItem) {
+    // 清空现有子节点
+    while (clipPatternResultsItem->childCount() > 0) {
+        delete clipPatternResultsItem->child(0);
+    }
+
+    // 获取 Clip Pattern 结果
+    const auto& clipPatternResults = view->clipPatternResults();
+
+    // 添加结果多边形到模型树
+    for (int i = 0; i < clipPatternResults.size(); ++i) {
+        const auto& resultPoly = clipPatternResults[i];
+        QString name = QString("Clip结果%1").arg(i + 1);
+        if (resultPoly.isHole) {
+            name += " (内环)";
+        }
+
+        auto* item = new QTreeWidgetItem(clipPatternResultsItem);
+        item->setText(0, name);
+        item->setData(0, Qt::UserRole, 200 + i); // 200+ 表示 Clip Pattern 结果
+        item->setData(0, Qt::UserRole + 1, resultPoly.isHole); // 存储是否为内环
+
+        // 根据是否为内环设置颜色
+        if (resultPoly.isHole) {
+            item->setForeground(0, QBrush(QColor(128, 128, 128))); // 灰色表示内环
+        }
+    }
+}
+
+// 更新 Subject Pattern 结果模型树的辅助函数
+void updateSubjectPatternResultsTree(Sketch2DView* view, QTreeWidgetItem* subjectPatternResultsItem) {
+    // 清空现有子节点
+    while (subjectPatternResultsItem->childCount() > 0) {
+        delete subjectPatternResultsItem->child(0);
+    }
+
+    // 获取 Subject Pattern 结果
+    const auto& subjectPatternResults = view->subjectPatternResults();
+
+    // 添加结果多边形到模型树
+    for (int i = 0; i < subjectPatternResults.size(); ++i) {
+        const auto& resultPoly = subjectPatternResults[i];
+        QString name = QString("Subject结果%1").arg(i + 1);
+        if (resultPoly.isHole) {
+            name += " (内环)";
+        }
+
+        auto* item = new QTreeWidgetItem(subjectPatternResultsItem);
+        item->setText(0, name);
+        item->setData(0, Qt::UserRole, 300 + i); // 300+ 表示 Subject Pattern 结果
+        item->setData(0, Qt::UserRole + 1, resultPoly.isHole); // 存储是否为内环
+
+        // 根据是否为内环设置颜色
+        if (resultPoly.isHole) {
+            item->setForeground(0, QBrush(QColor(128, 128, 128))); // 灰色表示内环
+        }
+    }
+}
+
+// 更新所有结果模型树的辅助函数
+void updateAllResultsTrees(FourViewContainer* viewContainer,
+    QTreeWidgetItem* booleanResultsItem,
+    QTreeWidgetItem* clipPatternResultsItem,
+    QTreeWidgetItem* subjectPatternResultsItem) {
+    // 更新布尔运算结果
+    updateBooleanResultsTree(viewContainer->bottomRightView(), booleanResultsItem);
+
+    // 更新 Clip Pattern 结果
+    updateClipPatternResultsTree(viewContainer->bottomLeftView(), clipPatternResultsItem);
+
+    // 更新 Subject Pattern 结果
+    updateSubjectPatternResultsTree(viewContainer->topRightView(), subjectPatternResultsItem);
+}
 
 int main(int argc, char* argv[]) {
     QApplication app(argc, argv);
@@ -26,22 +133,53 @@ int main(int argc, char* argv[]) {
     QMainWindow window;
     window.resize(1200, 700);
 
-    auto* splitter = new QSplitter(Qt::Horizontal, &window);
+    // 创建主水平分割器
+    auto* mainSplitter = new QSplitter(Qt::Horizontal, &window);
 
-    auto* modelTree = new QTreeWidget(&window);
-    modelTree->setHeaderLabel("模型树");
-    modelTree->setMinimumWidth(150);
-    modelTree->setMaximumWidth(300);
-    modelTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+    // 创建左侧垂直分割器，用于分隔输入和输出模型树
+    auto* leftSplitter = new QSplitter(Qt::Vertical, mainSplitter);
+    leftSplitter->setMinimumWidth(150);
+    leftSplitter->setMaximumWidth(300);
 
-    auto* polylinesItem = new QTreeWidgetItem(modelTree);
+    // ==================== 输入模型树（上面部分） ====================
+    auto* inputModelTree = new QTreeWidget(leftSplitter);
+    inputModelTree->setHeaderLabel("输入模型");
+    inputModelTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+
+    // 输入多段线节点
+    auto* polylinesItem = new QTreeWidgetItem(inputModelTree);
     polylinesItem->setText(0, "多段线");
     polylinesItem->setExpanded(true);
 
-
-    auto* polygonsItem = new QTreeWidgetItem(modelTree);
+    // 输入多边形节点
+    auto* polygonsItem = new QTreeWidgetItem(inputModelTree);
     polygonsItem->setText(0, "多边形");
     polygonsItem->setExpanded(true);
+
+    // ==================== 输出模型树（下面部分） ====================
+    auto* outputModelTree = new QTreeWidget(leftSplitter);
+    outputModelTree->setHeaderLabel("输出结果");
+    outputModelTree->setSelectionMode(QAbstractItemView::ExtendedSelection);
+
+    // 布尔运算结果节点
+    auto* booleanResultsItem = new QTreeWidgetItem(outputModelTree);
+    booleanResultsItem->setText(0, "布尔运算结果");
+    booleanResultsItem->setExpanded(true);
+
+    // Clip Pattern 结果节点
+    auto* clipPatternResultsItem = new QTreeWidgetItem(outputModelTree);
+    clipPatternResultsItem->setText(0, "Clip Pattern");
+    clipPatternResultsItem->setExpanded(true);
+
+    // Subject Pattern 结果节点
+    auto* subjectPatternResultsItem = new QTreeWidgetItem(outputModelTree);
+    subjectPatternResultsItem->setText(0, "Subject Pattern");
+    subjectPatternResultsItem->setExpanded(true);
+
+    // 设置左侧分割器的比例（输入在上，输出在下）
+    leftSplitter->setStretchFactor(0, 1);  // 输入模型树
+    leftSplitter->setStretchFactor(1, 1);  // 输出模型树
+    leftSplitter->setSizes({ 200, 200 });
 
     // Use FourViewContainer instead of single Sketch2DView
     auto* viewContainer = new FourViewContainer(&window);
@@ -49,13 +187,13 @@ int main(int argc, char* argv[]) {
 
     auto* view = viewContainer->mainView(); // Main view for tool selection
 
-    splitter->addWidget(modelTree);
-    splitter->addWidget(viewContainer);
-    splitter->setStretchFactor(0, 0);
-    splitter->setStretchFactor(1, 1);
-    splitter->setSizes({200, 1000});
+    mainSplitter->addWidget(leftSplitter);
+    mainSplitter->addWidget(viewContainer);
+    mainSplitter->setStretchFactor(0, 0);
+    mainSplitter->setStretchFactor(1, 1);
+    mainSplitter->setSizes({ 300, 1000 });
 
-    window.setCentralWidget(splitter);
+    window.setCentralWidget(mainSplitter);
 
     auto* toolbar = window.addToolBar("Tools");
     toolbar->setMovable(false);
@@ -150,48 +288,66 @@ int main(int argc, char* argv[]) {
         });
 
     // 连接右下角布尔运算下拉框的信号
-    QObject::connect(viewContainer, &FourViewContainer::booleanOperationTriggered, [=](int operationIndex) {
+    QObject::connect(viewContainer, &FourViewContainer::booleanOperationTriggered, [viewContainer, booleanResultsItem](int operationIndex) {
+        // 获取右下角视图（布尔运算结果视图）
+        auto* bottomRightView = viewContainer->bottomRightView();
+
         tailor_visualization::BooleanOperation operation;
         switch (operationIndex) {
-            case 0: // Union
-                operation = tailor_visualization::BooleanOperation::Union;
-                qDebug() << "执行并集运算";
-                break;
-            case 1: // Intersection
-                operation = tailor_visualization::BooleanOperation::Intersection;
-                qDebug() << "执行交集运算";
-                break;
-            case 2: // Difference
-                operation = tailor_visualization::BooleanOperation::Difference;
-                qDebug() << "执行差集运算";
-                break;
-            case 3: // XOR
-                operation = tailor_visualization::BooleanOperation::XOR;
-                qDebug() << "执行异或运算";
-                break;
-            default:
-                return;
+        case 0: // Union
+            operation = tailor_visualization::BooleanOperation::Union;
+            qDebug() << "执行并集运算";
+            break;
+        case 1: // Intersection
+            operation = tailor_visualization::BooleanOperation::Intersection;
+            qDebug() << "执行交集运算";
+            break;
+        case 2: // Difference
+            operation = tailor_visualization::BooleanOperation::Difference;
+            qDebug() << "执行差集运算";
+            break;
+        case 3: // XOR
+            operation = tailor_visualization::BooleanOperation::XOR;
+            qDebug() << "执行异或运算";
+            break;
+        default:
+            return;
         }
-        view->executeBooleanOperation(operation);
+        bottomRightView->executeBooleanOperation(operation);
         viewContainer->synchronizeViews();
+
+        // 更新布尔运算结果模型树
+        updateBooleanResultsTree(bottomRightView, booleanResultsItem);
         });
 
-    QObject::connect(view, &Sketch2DView::polylineAdded, [=](int index, const QString& name) {
+    QObject::connect(view, &Sketch2DView::polylineAdded, [polylinesItem, viewContainer, booleanResultsItem, clipPatternResultsItem, subjectPatternResultsItem](int index, const QString& name) {
         auto* item = new QTreeWidgetItem(polylinesItem);
         item->setText(0, name);
         item->setData(0, Qt::UserRole, 0); // 0 = polyline
         // 不再存储索引，使用在父节点中的位置
+
+        // 当多段线添加时，更新所有结果模型树
+        updateAllResultsTrees(viewContainer,
+            booleanResultsItem,
+            clipPatternResultsItem,
+            subjectPatternResultsItem);
         });
 
-    QObject::connect(view, &Sketch2DView::polygonAdded, [=](int index, const QString& name) {
+    QObject::connect(view, &Sketch2DView::polygonAdded, [polygonsItem, viewContainer, booleanResultsItem, clipPatternResultsItem, subjectPatternResultsItem](int index, const QString& name) {
         auto* item = new QTreeWidgetItem(polygonsItem);
         item->setText(0, name);
         item->setData(0, Qt::UserRole, 1); // 1 = polygon
         // 不再存储索引，使用在父节点中的位置
+
+        // 当多边形添加时，更新所有结果模型树
+        updateAllResultsTrees(viewContainer,
+            booleanResultsItem,
+            clipPatternResultsItem,
+            subjectPatternResultsItem);
         });
 
     // 处理 polygonRoleChanged 信号，更新模型树颜色
-    QObject::connect(view, &Sketch2DView::polygonRoleChanged, [=](int index, bool isPolygon) {
+    QObject::connect(view, &Sketch2DView::polygonRoleChanged, [polygonsItem, polylinesItem, view, viewContainer, booleanResultsItem, clipPatternResultsItem, subjectPatternResultsItem](int index, bool isPolygon) {
         QTreeWidgetItem* parentItem = isPolygon ? polygonsItem : polylinesItem;
         if (index >= 0 && index < parentItem->childCount()) {
             QTreeWidgetItem* item = parentItem->child(index);
@@ -206,12 +362,23 @@ int main(int argc, char* argv[]) {
                 item->setForeground(0, QBrush()); // 恢复默认颜色
             }
         }
+
+        // 当多边形角色改变时，更新所有结果模型树
+        updateAllResultsTrees(viewContainer,
+            booleanResultsItem,
+            clipPatternResultsItem,
+            subjectPatternResultsItem);
         });
 
-    QObject::connect(modelTree, &QTreeWidget::itemSelectionChanged, [=]() {
-        auto selectedItems = modelTree->selectedItems();
+    // ==================== 输入模型树选择变化 ====================
+    // ==================== 输入模型树选择变化 ====================
+    QObject::connect(inputModelTree, &QTreeWidget::itemSelectionChanged, [inputModelTree, view]() {
+        auto selectedItems = inputModelTree->selectedItems();
+
+        // 清除主视图的选择
+        view->clearSelection();
+
         if (selectedItems.isEmpty()) {
-            view->clearSelection();
             return;
         }
 
@@ -236,12 +403,10 @@ int main(int argc, char* argv[]) {
                 polygonIndices.insert(index);
                 selectedPolygonIndex = index;
             }
+            // 注意：输入模型树不应该包含结果多边形（类型>=100）
         }
 
-        // 清除视图中的选择
-        view->clearSelection();
-
-        // 添加到对应的选中集合
+        // 处理主视图中的多边形/多段线选择
         for (int index : polylineIndices) {
             view->addSelectedPolyline(index);
         }
@@ -259,10 +424,86 @@ int main(int argc, char* argv[]) {
         }
         });
 
-    // 右键菜单功能
-    modelTree->setContextMenuPolicy(Qt::CustomContextMenu);
-    QObject::connect(modelTree, &QTreeWidget::customContextMenuRequested, [=](const QPoint& pos) {
-        auto selectedItems = modelTree->selectedItems();
+    // ==================== 输出模型树选择变化 ====================
+    QObject::connect(outputModelTree, &QTreeWidget::itemSelectionChanged, [outputModelTree, viewContainer]() {
+        auto selectedItems = outputModelTree->selectedItems();
+
+        // 获取所有结果视图
+        auto* bottomRightView = viewContainer->bottomRightView(); // 布尔运算结果视图
+        auto* bottomLeftView = viewContainer->bottomLeftView();   // Clip Pattern 结果视图
+        auto* topRightView = viewContainer->topRightView();       // Subject Pattern 结果视图
+
+        // 清除所有结果视图的高亮
+        bottomRightView->clearHighlightedResult();
+        bottomLeftView->clearHighlightedResult();
+        topRightView->clearHighlightedResult();
+
+        if (selectedItems.isEmpty()) {
+            return;
+        }
+
+        // 收集结果多边形的选择
+        QSet<int> booleanResultIndices;
+        QSet<int> clipPatternResultIndices;
+        QSet<int> subjectPatternResultIndices;
+
+        for (QTreeWidgetItem* item : selectedItems) {
+            if (!item->parent()) {
+                continue;
+            }
+
+            int type = item->data(0, Qt::UserRole).toInt();
+            int index = item->parent()->indexOfChild(item);
+
+            if (type >= 100 && type < 200) { // 布尔运算结果 (100-199)
+                int resultIndex = type - 100; // 转换为实际索引
+                booleanResultIndices.insert(resultIndex);
+            } else if (type >= 200 && type < 300) { // Clip Pattern 结果 (200-299)
+                int resultIndex = type - 200; // 转换为实际索引
+                clipPatternResultIndices.insert(resultIndex);
+            } else if (type >= 300) { // Subject Pattern 结果 (300+)
+                int resultIndex = type - 300; // 转换为实际索引
+                subjectPatternResultIndices.insert(resultIndex);
+            }
+            // 注意：输出模型树不应该包含普通多边形/多段线（类型0-1）
+        }
+
+        // 处理结果多边形的高亮
+        // 布尔运算结果高亮（支持多个选择）
+        if (!booleanResultIndices.isEmpty()) {
+            // 高亮第一个选中的结果
+            int firstIndex = *booleanResultIndices.begin();
+            bottomRightView->setHighlightedResult(firstIndex);
+        } else {
+            // 如果没有选中布尔运算结果，清除高亮
+            bottomRightView->clearHighlightedResult();
+        }
+
+        // Clip Pattern 结果高亮（支持多个选择）
+        if (!clipPatternResultIndices.isEmpty()) {
+            // 高亮第一个选中的结果
+            int firstIndex = *clipPatternResultIndices.begin();
+            bottomLeftView->setHighlightedResult(firstIndex);
+        } else {
+            // 如果没有选中 Clip Pattern 结果，清除高亮
+            bottomLeftView->clearHighlightedResult();
+        }
+
+        // Subject Pattern 结果高亮（支持多个选择）
+        if (!subjectPatternResultIndices.isEmpty()) {
+            // 高亮第一个选中的结果
+            int firstIndex = *subjectPatternResultIndices.begin();
+            topRightView->setHighlightedResult(firstIndex);
+        } else {
+            // 如果没有选中 Subject Pattern 结果，清除高亮
+            topRightView->clearHighlightedResult();
+        }
+        });
+
+    // ==================== 输入模型树右键菜单 ====================
+    inputModelTree->setContextMenuPolicy(Qt::CustomContextMenu);
+    QObject::connect(inputModelTree, &QTreeWidget::customContextMenuRequested, [inputModelTree, view, viewContainer, polylinesItem, polygonsItem](const QPoint& pos) {
+        auto selectedItems = inputModelTree->selectedItems();
         if (selectedItems.isEmpty()) {
             return;
         }
@@ -272,7 +513,11 @@ int main(int argc, char* argv[]) {
         for (QTreeWidgetItem* item : selectedItems) {
             if (item->parent()) {
                 hasValidSelection = true;
-                break;
+                // 输入模型树不应该包含结果多边形（UserRole >= 100）
+                int type = item->data(0, Qt::UserRole).toInt();
+                if (type >= 100) {
+                    qDebug() << "警告：输入模型树中包含结果多边形，类型:" << type;
+                }
             }
         }
 
@@ -280,9 +525,17 @@ int main(int argc, char* argv[]) {
             return;
         }
 
+        // 调试信息
+        qDebug() << "输入模型树右键菜单: hasValidSelection =" << hasValidSelection
+            << ", 选中项数量:" << selectedItems.size();
+
+        if (!hasValidSelection) {
+            return;
+        }
+
         // 创建右键菜单
         QMenu menu;
-        QAction* deleteAction = menu.addAction("删除");
+        QAction* deleteAction = nullptr;
         QAction* exportAction = menu.addAction("导出");
 
         // 添加 Clip 和 Subject 选项（允许多选）
@@ -290,6 +543,9 @@ int main(int argc, char* argv[]) {
         QAction* addToSubjectAction = nullptr;
         QAction* removeFromSetsAction = nullptr;
         QAction* changeEdgeColorAction = nullptr;
+
+        // 输入模型树没有结果多边形，可以直接添加删除选项
+        deleteAction = menu.addAction("删除");
 
         // 检查是否有选中的多边形
         bool hasSelectedPolygons = false;
@@ -303,6 +559,7 @@ int main(int argc, char* argv[]) {
             }
         }
 
+        // 输入模型树只有普通多边形，显示修改选项
         if (hasValidSelection) {
             menu.addSeparator();
             addToClipAction = menu.addAction("加入 Clip");
@@ -311,32 +568,86 @@ int main(int argc, char* argv[]) {
             // 更改边界颜色支持多选（只要有选中多边形就显示）
             if (hasSelectedPolygons) {
                 changeEdgeColorAction = menu.addAction("更改边界颜色...");
+                qDebug() << "创建了changeEdgeColorAction菜单项";
             }
+        } else {
+            qDebug() << "不显示修改选项: hasValidSelection =" << hasValidSelection;
         }
 
-        QAction* result = menu.exec(modelTree->mapToGlobal(pos));
+        QAction* result = menu.exec(inputModelTree->mapToGlobal(pos));
+
+        // 调试：输出用户选择的菜单项
+        if (result) {
+            qDebug() << "用户选择了菜单项:" << result->text()
+                << ", changeEdgeColorAction指针:" << changeEdgeColorAction
+                << ", result == changeEdgeColorAction:" << (result == changeEdgeColorAction);
+        } else {
+            qDebug() << "用户取消了菜单选择";
+        }
 
         // 处理更改边界颜色操作
-        if (result == changeEdgeColorAction) {
+        // 只有当result不为空且等于changeEdgeColorAction时才处理
+        if (result && result == changeEdgeColorAction) {
+            qDebug() << "进入更改边界颜色处理逻辑";
+
+            // 输入模型树不应该包含结果多边形，所以不需要这个安全检查
+            // 但仍然需要检查是否有选中的有效多边形
+            bool hasPolygonsToColor = false;
+            for (QTreeWidgetItem* item : selectedItems) {
+                if (item->parent()) {
+                    int type = item->data(0, Qt::UserRole).toInt();
+                    if (type == 1) { // polygon
+                        hasPolygonsToColor = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!hasPolygonsToColor) {
+                qDebug() << "没有选中的多边形可以更改颜色";
+                return;
+            }
+
+            qDebug() << "view指针是否有效:" << (view != nullptr);
+            if (!view) {
+                qDebug() << "错误: view指针为空!";
+                return;
+            }
+
             // 获取第一个选中多边形的颜色作为默认值，并收集所有选中多边形的索引
             QColor currentColor = QColor(255, 255, 255);
             QSet<int> polygonIndices;
+
+            // 安全检查：确保view指针有效
+            if (!view) {
+                qDebug() << "致命错误：view指针无效，无法更改颜色";
+                return;
+            }
+
             for (QTreeWidgetItem* item : selectedItems) {
                 if (!item->parent()) continue;
                 int type = item->data(0, Qt::UserRole).toInt();
                 if (type == 1) { // polygon
                     int index = item->parent()->indexOfChild(item);
-                    const auto& polygons = view->polygons();
-                    if (index >= 0 && index < polygons.size()) {
-                        if (!polygons[index].vertices.isEmpty()) {
-                            currentColor = polygons[index].vertices[0].edgeColor;
-                        }
-                        polygonIndices.insert(index);
+                    // 安全检查：确保索引有效
+                    if (index < 0) {
+                        continue;
                     }
+
+                    const auto& polygons = view->polygons();
+                    // 安全检查：确保索引在范围内
+                    if (index >= polygons.size()) {
+                        continue;
+                    }
+
+                    if (!polygons[index].vertices.isEmpty()) {
+                        currentColor = polygons[index].vertices[0].edgeColor;
+                    }
+                    polygonIndices.insert(index);
                 }
             }
             // 打开颜色选择对话框
-            QColor newColor = QColorDialog::getColor(currentColor, modelTree, "选择边界颜色");
+            QColor newColor = QColorDialog::getColor(currentColor, inputModelTree, "选择边界颜色");
             if (newColor.isValid()) {
                 // 批量设置所有选中多边形的颜色
                 view->setPolygonEdgeColorBatch(polygonIndices, newColor, true);
@@ -377,6 +688,23 @@ int main(int argc, char* argv[]) {
 
         // 处理删除操作
         if (result == deleteAction) {
+            // 检查是否包含结果多边形（不能删除结果多边形）
+            bool containsResultPolygons = false;
+            for (QTreeWidgetItem* item : selectedItems) {
+                if (item->parent()) {
+                    int type = item->data(0, Qt::UserRole).toInt();
+                    if (type >= 100) { // 100+ 表示结果多边形
+                        containsResultPolygons = true;
+                        break;
+                    }
+                }
+            }
+
+            if (containsResultPolygons) {
+                QMessageBox::warning(inputModelTree, "警告", "不能删除结果多边形！");
+                return;
+            }
+
             // 收集需要删除的索引（使用 QSet）
             QSet<int> polylineIndicesToDelete;
             QSet<int> polygonIndicesToDelete;
@@ -420,6 +748,16 @@ int main(int argc, char* argv[]) {
             QString filePath = QFileDialog::getSaveFileName(nullptr, "导出多边形", "", "Polygon Files (*.txt);;All Files (*)");
             if (filePath.isEmpty()) {
                 return;
+            }
+
+            // 调试：输出选中的项信息
+            qDebug() << "导出操作，选中项数量:" << selectedItems.size();
+            for (int i = 0; i < selectedItems.size(); ++i) {
+                QTreeWidgetItem* item = selectedItems[i];
+                if (item->parent()) {
+                    int type = item->data(0, Qt::UserRole).toInt();
+                    qDebug() << "  项" << i << "类型:" << type << "文本:" << item->text(0);
+                }
             }
 
             // 收集需要导出的多边形
@@ -482,6 +820,66 @@ int main(int argc, char* argv[]) {
                             polygon.edges.push_back(edge);
                         }
                     }
+                } else if (type >= 100 && type < 200) { // 布尔运算结果 (100-199)
+                    int resultIndex = type - 100;
+                    if (viewContainer->bottomRightView()) {
+                        const auto& booleanResults = viewContainer->bottomRightView()->booleanResults();
+                        if (resultIndex >= 0 && resultIndex < booleanResults.size()) {
+                            const auto& resultPoly = booleanResults[resultIndex];
+                            for (int j = 0; j < resultPoly.vertices.size(); ++j) {
+                                const auto& vertex = resultPoly.vertices[j];
+                                const auto& nextVertex = resultPoly.vertices[(j + 1) % resultPoly.vertices.size()];
+
+                                tailor_visualization::PolygonEdge edge;
+                                edge.startPoint.x = vertex.point.x();
+                                edge.startPoint.y = vertex.point.y();
+                                edge.endPoint.x = nextVertex.point.x();
+                                edge.endPoint.y = nextVertex.point.y();
+                                edge.bulge = 0.0; // 结果多边形通常没有凸度
+                                polygon.edges.push_back(edge);
+                            }
+                        }
+                    }
+                } else if (type >= 200 && type < 300) { // Clip Pattern 结果 (200-299)
+                    int resultIndex = type - 200;
+                    if (viewContainer->bottomLeftView()) {
+                        const auto& clipPatternResults = viewContainer->bottomLeftView()->clipPatternResults();
+                        if (resultIndex >= 0 && resultIndex < clipPatternResults.size()) {
+                            const auto& resultPoly = clipPatternResults[resultIndex];
+                            for (int j = 0; j < resultPoly.vertices.size(); ++j) {
+                                const auto& vertex = resultPoly.vertices[j];
+                                const auto& nextVertex = resultPoly.vertices[(j + 1) % resultPoly.vertices.size()];
+
+                                tailor_visualization::PolygonEdge edge;
+                                edge.startPoint.x = vertex.point.x();
+                                edge.startPoint.y = vertex.point.y();
+                                edge.endPoint.x = nextVertex.point.x();
+                                edge.endPoint.y = nextVertex.point.y();
+                                edge.bulge = 0.0; // 结果多边形通常没有凸度
+                                polygon.edges.push_back(edge);
+                            }
+                        }
+                    }
+                } else if (type >= 300) { // Subject Pattern 结果 (300+)
+                    int resultIndex = type - 300;
+                    if (viewContainer->topRightView()) {
+                        const auto& subjectPatternResults = viewContainer->topRightView()->subjectPatternResults();
+                        if (resultIndex >= 0 && resultIndex < subjectPatternResults.size()) {
+                            const auto& resultPoly = subjectPatternResults[resultIndex];
+                            for (int j = 0; j < resultPoly.vertices.size(); ++j) {
+                                const auto& vertex = resultPoly.vertices[j];
+                                const auto& nextVertex = resultPoly.vertices[(j + 1) % resultPoly.vertices.size()];
+
+                                tailor_visualization::PolygonEdge edge;
+                                edge.startPoint.x = vertex.point.x();
+                                edge.startPoint.y = vertex.point.y();
+                                edge.endPoint.x = nextVertex.point.x();
+                                edge.endPoint.y = nextVertex.point.y();
+                                edge.bulge = 0.0; // 结果多边形通常没有凸度
+                                polygon.edges.push_back(edge);
+                            }
+                        }
+                    }
                 }
 
                 if (!polygon.edges.empty()) {
@@ -500,6 +898,148 @@ int main(int argc, char* argv[]) {
             }
         }
         });
+
+    // ==================== 输出模型树右键菜单 ====================
+    outputModelTree->setContextMenuPolicy(Qt::CustomContextMenu);
+    QObject::connect(outputModelTree, &QTreeWidget::customContextMenuRequested, [outputModelTree, viewContainer](const QPoint& pos) {
+        auto selectedItems = outputModelTree->selectedItems();
+        if (selectedItems.isEmpty()) {
+            return;
+        }
+
+        // 检查是否选中了有效的曲线对象（不是父节点）
+        bool hasValidSelection = false;
+        for (QTreeWidgetItem* item : selectedItems) {
+            if (item->parent()) {
+                hasValidSelection = true;
+                break;
+            }
+        }
+
+        if (!hasValidSelection) {
+            return;
+        }
+
+        // 输出模型树右键菜单只有"导出"选项
+        QMenu menu;
+        QAction* exportAction = menu.addAction("导出");
+
+        QAction* result = menu.exec(outputModelTree->mapToGlobal(pos));
+
+        if (result == exportAction) {
+            // 导出选中的结果多边形到文件
+            QString filePath = QFileDialog::getSaveFileName(nullptr, "导出结果多边形", "", "Polygon Files (*.txt);;All Files (*)");
+            if (filePath.isEmpty()) {
+                return;
+            }
+
+            // 收集需要导出的结果多边形
+            std::vector<tailor_visualization::Polygon> polygonsToExport;
+
+            for (QTreeWidgetItem* item : selectedItems) {
+                if (!item->parent()) {
+                    continue;
+                }
+
+                int type = item->data(0, Qt::UserRole).toInt();
+                int index = item->parent()->indexOfChild(item);
+
+                tailor_visualization::Polygon polygon;
+
+                if (type >= 100 && type < 200) { // 布尔运算结果 (100-199)
+                    int resultIndex = type - 100;
+                    if (viewContainer->bottomRightView()) {
+                        const auto& booleanResults = viewContainer->bottomRightView()->booleanResults();
+                        if (resultIndex >= 0 && resultIndex < booleanResults.size()) {
+                            const auto& resultPoly = booleanResults[resultIndex];
+                            for (int j = 0; j < resultPoly.vertices.size(); ++j) {
+                                const auto& vertex = resultPoly.vertices[j];
+                                const auto& nextVertex = resultPoly.vertices[(j + 1) % resultPoly.vertices.size()];
+
+                                tailor_visualization::PolygonEdge edge;
+                                edge.startPoint.x = vertex.point.x();
+                                edge.startPoint.y = vertex.point.y();
+                                edge.endPoint.x = nextVertex.point.x();
+                                edge.endPoint.y = nextVertex.point.y();
+                                edge.bulge = 0.0; // 结果多边形通常没有凸度
+                                polygon.edges.push_back(edge);
+                            }
+                        }
+                    }
+                } else if (type >= 200 && type < 300) { // Clip Pattern 结果 (200-299)
+                    int resultIndex = type - 200;
+                    if (viewContainer->bottomLeftView()) {
+                        const auto& clipPatternResults = viewContainer->bottomLeftView()->clipPatternResults();
+                        if (resultIndex >= 0 && resultIndex < clipPatternResults.size()) {
+                            const auto& resultPoly = clipPatternResults[resultIndex];
+                            for (int j = 0; j < resultPoly.vertices.size(); ++j) {
+                                const auto& vertex = resultPoly.vertices[j];
+                                const auto& nextVertex = resultPoly.vertices[(j + 1) % resultPoly.vertices.size()];
+
+                                tailor_visualization::PolygonEdge edge;
+                                edge.startPoint.x = vertex.point.x();
+                                edge.startPoint.y = vertex.point.y();
+                                edge.endPoint.x = nextVertex.point.x();
+                                edge.endPoint.y = nextVertex.point.y();
+                                edge.bulge = 0.0; // 结果多边形通常没有凸度
+                                polygon.edges.push_back(edge);
+                            }
+                        }
+                    }
+                } else if (type >= 300) { // Subject Pattern 结果 (300+)
+                    int resultIndex = type - 300;
+                    if (viewContainer->topRightView()) {
+                        const auto& subjectPatternResults = viewContainer->topRightView()->subjectPatternResults();
+                        if (resultIndex >= 0 && resultIndex < subjectPatternResults.size()) {
+                            const auto& resultPoly = subjectPatternResults[resultIndex];
+                            for (int j = 0; j < resultPoly.vertices.size(); ++j) {
+                                const auto& vertex = resultPoly.vertices[j];
+                                const auto& nextVertex = resultPoly.vertices[(j + 1) % resultPoly.vertices.size()];
+
+                                tailor_visualization::PolygonEdge edge;
+                                edge.startPoint.x = vertex.point.x();
+                                edge.startPoint.y = vertex.point.y();
+                                edge.endPoint.x = nextVertex.point.x();
+                                edge.endPoint.y = nextVertex.point.y();
+                                edge.bulge = 0.0; // 结果多边形通常没有凸度
+                                polygon.edges.push_back(edge);
+                            }
+                        }
+                    }
+                }
+
+                if (!polygon.edges.empty()) {
+                    polygonsToExport.push_back(polygon);
+                }
+            }
+
+            // 导出到文件
+            if (!polygonsToExport.empty()) {
+                bool success = tailor_visualization::PolygonIO::ExportToFile(filePath.toStdString(), polygonsToExport);
+                if (!success) {
+                    qDebug() << "导出失败!";
+                } else {
+                    qDebug() << "导出成功:" << filePath;
+                }
+            }
+        }
+        });
+
+    // 添加定时器定期更新结果模型树（确保不会漏掉任何更新）
+    QTimer* updateTimer = new QTimer();
+    QObject::connect(updateTimer, &QTimer::timeout, [viewContainer, booleanResultsItem, clipPatternResultsItem, subjectPatternResultsItem]() {
+        updateAllResultsTrees(viewContainer,
+            booleanResultsItem,
+            clipPatternResultsItem,
+            subjectPatternResultsItem);
+        });
+    updateTimer->start(1000); // 每秒检查一次
+
+    // 初始更新所有结果模型树
+    updateAllResultsTrees(viewContainer,
+        booleanResultsItem,
+        clipPatternResultsItem,
+        subjectPatternResultsItem);
 
     window.show();
 

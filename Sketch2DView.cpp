@@ -704,72 +704,52 @@ void Sketch2DView::mouseMoveEvent(QMouseEvent* event) {
                 emit polylineModified();
             }
         } else {
-            // Left click: Split edge (perpendicular drag) or modify bulge (away drag)
+            // Left click: Always split the edge (no direction judgment)
             qreal dragDistance = QLineF(m_dragStartPos, screenPos).length();
 
             if (m_splitVertexIndex == -1) {
-                // First movement: decide whether to split or modify bulge
-                QPointF edgeDir = edgeEnd - edgeStart;
-                QPointF perpDir(-edgeDir.y(), edgeDir.x());
+                // First movement: always split the edge
+                m_splitVertexIndex = m_draggedEdge.vertexIndex2;
 
-                QPointF dragWorld = p - getEdgeMidpoint(edgeStart, edgeEnd);
-                qreal alongEdge = (dragWorld.x() * edgeDir.x() + dragWorld.y() * edgeDir.y()) / QLineF(edgeStart, edgeEnd).length();
-                qreal perpDist = qAbs((dragWorld.x() * perpDir.x() + dragWorld.y() * perpDir.y()) / QLineF(QPointF(0, 0), perpDir).length());
+                QPointF midpoint;
+                qreal halfBulge;
 
-                if (perpDist > qAbs(alongEdge)) {
-                    // Dragging perpendicular: split the edge
-                    m_splitVertexIndex = m_draggedEdge.vertexIndex2;
+                const qreal originalBulge = poly.vertices[m_draggedEdge.vertexIndex1].bulge;
+                const QColor originalEdgeColor = poly.vertices[m_draggedEdge.vertexIndex1].edgeColor;
 
-
-                    QPointF midpoint;
-                    qreal halfBulge;
-
-                    const qreal originalBulge = poly.vertices[m_draggedEdge.vertexIndex1].bulge;
-                    const QColor originalEdgeColor = poly.vertices[m_draggedEdge.vertexIndex1].edgeColor;
-
-                    if (qAbs(originalBulge) < 1e-6) {
-                        // Straight line: use midpoint of chord
-                        midpoint = getEdgeMidpoint(edgeStart, edgeEnd);
-                        halfBulge = 0.0;
-                    } else {
-                        // Arc: use midpoint on the arc
-                        midpoint = arcPointFromBulge(edgeStart, edgeEnd, originalBulge);
-                        // Calculate bulge for half-arcs
-                        halfBulge = splitArcBulge(originalBulge);
-
-                        // Update the first edge's bulge to half the original
-                        poly.vertices[m_draggedEdge.vertexIndex1].bulge = halfBulge;
-                    }
-
-                    PolygonVertex newVertex;
-                    newVertex.point = midpoint;
-                    newVertex.bulge = halfBulge;
-                    newVertex.edgeColor = originalEdgeColor;
-                    poly.vertices.insert(m_splitVertexIndex, newVertex);
-
-                    // Set up to drag the newly inserted vertex
-                    m_originalPoint = midpoint;
-                    m_dragStartPos = screenPos;
-                    m_dragMode = DragMode::Vertex;
-                    m_draggedEdge.vertexIndex1 = m_splitVertexIndex; // Drag the new vertex
-                    m_draggedEdge.vertexIndex2 = -1;
-
-                    if (m_draggedEdge.isPolygon) {
-                        emit polygonModified();
-                    } else {
-                        emit polylineModified();
-                    }
+                if (qAbs(originalBulge) < 1e-6) {
+                    // Straight line: use midpoint of chord
+                    midpoint = getEdgeMidpoint(edgeStart, edgeEnd);
+                    halfBulge = 0.0;
+                    // Explicitly set first edge's bulge to 0 for straight line
+                    poly.vertices[m_draggedEdge.vertexIndex1].bulge = 0.0;
                 } else {
-                    // Dragging along/away: modify bulge (convert line to arc)
-                    // Update bulge in real-time as we drag
-                    m_arcThroughPoint = p;
-                    qreal newBulge = bulgeFromArc(edgeStart, edgeEnd, m_arcThroughPoint);
-                    poly.vertices[m_draggedEdge.vertexIndex1].bulge = newBulge;
-                    if (m_draggedEdge.isPolygon) {
-                        emit polygonModified();
-                    } else {
-                        emit polylineModified();
-                    }
+                    // Arc: use midpoint on the arc
+                    midpoint = arcPointFromBulge(edgeStart, edgeEnd, originalBulge);
+                    // Calculate bulge for half-arcs
+                    halfBulge = splitArcBulge(originalBulge);
+
+                    // Update the first edge's bulge to half the original
+                    poly.vertices[m_draggedEdge.vertexIndex1].bulge = halfBulge;
+                }
+
+                PolygonVertex newVertex;
+                newVertex.point = midpoint;
+                newVertex.bulge = halfBulge;
+                newVertex.edgeColor = originalEdgeColor;
+                poly.vertices.insert(m_splitVertexIndex, newVertex);
+
+                // Set up to drag the newly inserted vertex
+                m_originalPoint = midpoint;
+                m_dragStartPos = screenPos;
+                m_dragMode = DragMode::Vertex;
+                m_draggedEdge.vertexIndex1 = m_splitVertexIndex; // Drag the new vertex
+                m_draggedEdge.vertexIndex2 = -1;
+
+                if (m_draggedEdge.isPolygon) {
+                    emit polygonModified();
+                } else {
+                    emit polylineModified();
                 }
             } else {
                 // Continue splitting/dragging
@@ -1079,10 +1059,12 @@ void Sketch2DView::paintEvent(QPaintEvent* event) {
         for (int i = 0; i < m_booleanResults.size(); ++i) {
             const auto& resultPoly = m_booleanResults[i];
 
-            // 检查是否是悬停的结果多边形
-            bool isHovered = (m_readOnly && i == m_hoveredResultIndex);
+            // 检查是否是悬停或手动高亮的结果多边形
+            bool isHighlighted = (i == m_highlightedResultIndex);
+            // isHovered 现在也包含高亮状态，用于边绘制
+            bool isHovered = (m_readOnly && i == m_hoveredResultIndex) || isHighlighted;
 
-            // 内环使用黑色填充，悬停时高亮
+            // 内环使用黑色填充，悬停或高亮时使用不同颜色
             if (isHovered) {
                 painter.setBrush(resultPoly.isHole ? QColor(0, 0, 0, 150) : resultPoly.color.lighter(130));
             } else {
@@ -1176,10 +1158,12 @@ void Sketch2DView::paintEvent(QPaintEvent* event) {
         for (int i = 0; i < m_clipPatternResults.size(); ++i) {
             const auto& resultPoly = m_clipPatternResults[i];
 
-            // 检查是否是悬停的结果多边形
-            bool isHovered = (m_readOnly && i == m_hoveredResultIndex);
+            // 检查是否是悬停或手动高亮的结果多边形
+            bool isHighlighted = (i == m_highlightedResultIndex);
+            // isHovered 现在也包含高亮状态，用于边绘制
+            bool isHovered = (m_readOnly && i == m_hoveredResultIndex) || isHighlighted;
 
-            // 内环使用黑色填充，悬停时高亮
+            // 内环使用黑色填充，悬停或高亮时使用不同颜色
             if (isHovered) {
                 painter.setBrush(resultPoly.isHole ? QColor(0, 0, 0, 150) : resultPoly.color.lighter(130));
             } else {
@@ -1273,10 +1257,12 @@ void Sketch2DView::paintEvent(QPaintEvent* event) {
         for (int i = 0; i < m_subjectPatternResults.size(); ++i) {
             const auto& resultPoly = m_subjectPatternResults[i];
 
-            // 检查是否是悬停的结果多边形
-            bool isHovered = (m_readOnly && i == m_hoveredResultIndex);
+            // 检查是否是悬停或手动高亮的结果多边形
+            bool isHighlighted = (i == m_highlightedResultIndex);
+            // isHovered 现在也包含高亮状态，用于边绘制
+            bool isHovered = (m_readOnly && i == m_hoveredResultIndex) || isHighlighted;
 
-            // 内环使用黑色填充，悬停时高亮
+            // 内环使用黑色填充，悬停或高亮时使用不同颜色
             if (isHovered) {
                 painter.setBrush(resultPoly.isHole ? QColor(0, 0, 0, 150) : resultPoly.color.lighter(130));
             } else {
@@ -1522,6 +1508,20 @@ void Sketch2DView::addSelectedPolygon(int index) {
 void Sketch2DView::removeSelectedPolygon(int index) {
     if (m_selectedPolygons.contains(index)) {
         m_selectedPolygons.remove(index);
+        update();
+    }
+}
+
+void Sketch2DView::setHighlightedResult(int index) {
+    if (m_highlightedResultIndex != index) {
+        m_highlightedResultIndex = index;
+        update();
+    }
+}
+
+void Sketch2DView::clearHighlightedResult() {
+    if (m_highlightedResultIndex != -1) {
+        m_highlightedResultIndex = -1;
         update();
     }
 }
@@ -2884,7 +2884,8 @@ void Sketch2DView::contextMenuEvent(QContextMenuEvent* event) {
     QMenu menu(this);
 
     // Create polyline action (only available when Polyline tool is selected)
-    if (m_tool == Tool::Polyline) {
+    // 在结果视图模式下不显示创建选项
+    if (m_tool == Tool::Polyline && m_viewMode == ViewMode::Normal) {
         QAction* createAction = menu.addAction("创建多段线");
         connect(createAction, &QAction::triggered, this, [this]() {
             // Create line segment (2 vertices) at the stored position
@@ -2901,7 +2902,8 @@ void Sketch2DView::contextMenuEvent(QContextMenuEvent* event) {
     }
 
     // Create polygon action (only available when Polygon tool is selected)
-    if (m_tool == Tool::Polygon) {
+    // 在结果视图模式下不显示创建选项
+    if (m_tool == Tool::Polygon && m_viewMode == ViewMode::Normal) {
         QAction* createAction = menu.addAction("创建多边形");
         connect(createAction, &QAction::triggered, this, [this]() {
             // Create triangle at the stored position
@@ -2919,8 +2921,9 @@ void Sketch2DView::contextMenuEvent(QContextMenuEvent* event) {
     }
 
     // 批量加入 Clip/Subject 集合（当有选中的对象时）
+    // 在结果视图模式下不显示此选项，因为结果多边形不能修改角色
     bool hasSelection = !m_selectedPolygons.isEmpty() || !m_selectedPolylines.isEmpty();
-    if (hasSelection && !m_readOnly) {
+    if (hasSelection && !m_readOnly && m_viewMode == ViewMode::Normal) {
         menu.addSeparator();
 
         QAction* addToClipAction = menu.addAction("加入 Clip 集合");
@@ -2951,7 +2954,8 @@ void Sketch2DView::contextMenuEvent(QContextMenuEvent* event) {
             });
 
         // 如果按住 Ctrl 键，显示快捷菜单
-        if (ctrlPressed) {
+        // 在结果视图模式下不显示此菜单，因为结果多边形不能修改
+        if (ctrlPressed && m_viewMode == ViewMode::Normal) {
             menu.addSeparator();
             QAction* clipMenu = menu.addAction("加入 Clip");
             connect(clipMenu, &QAction::triggered, this, [this]() {
@@ -2983,23 +2987,28 @@ void Sketch2DView::contextMenuEvent(QContextMenuEvent* event) {
     }
 
     // 修改多边形边界颜色（当有选中的多边形时）
-    if (!m_selectedPolygons.isEmpty() && !m_readOnly) {
+    // 在结果视图模式下不显示此选项，因为结果多边形不能修改颜色
+    if (!m_selectedPolygons.isEmpty() && !m_readOnly && 
+        m_viewMode == ViewMode::Normal) {
         menu.addSeparator();
         QAction* colorAction = menu.addAction("更改边界颜色...");
         connect(colorAction, &QAction::triggered, this, [this]() {
             if (!m_selectedPolygons.isEmpty()) {
                 // 获取第一个选中多边形的颜色作为默认值
                 int firstIndex = *m_selectedPolygons.constBegin();
-                const auto& vertices = m_polygons[firstIndex].vertices;
-                if (!vertices.isEmpty()) {
-                    QColor currentColor = vertices[0].edgeColor;
-                    QColor newColor = QColorDialog::getColor(currentColor, this, "选择边界颜色");
-                    if (newColor.isValid()) {
-                        // 批量设置所有选中多边形的颜色
-                        setPolygonEdgeColorBatch(m_selectedPolygons, newColor, true);
-                        // 强制立即刷新所有相关视图
-                        QCoreApplication::processEvents();
-                        update();
+                // 安全检查：确保索引有效
+                if (firstIndex >= 0 && firstIndex < m_polygons.size()) {
+                    const auto& vertices = m_polygons[firstIndex].vertices;
+                    if (!vertices.isEmpty()) {
+                        QColor currentColor = vertices[0].edgeColor;
+                        QColor newColor = QColorDialog::getColor(currentColor, this, "选择边界颜色");
+                        if (newColor.isValid()) {
+                            // 批量设置所有选中多边形的颜色
+                            setPolygonEdgeColorBatch(m_selectedPolygons, newColor, true);
+                            // 强制立即刷新所有相关视图
+                            QCoreApplication::processEvents();
+                            update();
+                        }
                     }
                 }
             }

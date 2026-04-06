@@ -76,6 +76,11 @@ public:
 
     const QSet<int>& selectedPolygons() const { return m_selectedPolygons; }
     const QSet<int>& selectedPolylines() const { return m_selectedPolylines; }
+    
+    // 结果多边形高亮支持
+    void setHighlightedResult(int index);
+    void clearHighlightedResult();
+    int highlightedResultIndex() const { return m_highlightedResultIndex; }
 
     // Data access for view synchronization
     const QVector<Polyline>& polylines() const { return m_polylines; }
@@ -233,6 +238,7 @@ private:
     QSet<int> m_selectedPolylines;  // 多段线的多选索引集合
     int m_hoveredPolygonIndex = -1;  // 鼠标悬停的高亮多边形（只读模式下）
     int m_hoveredResultIndex = -1;   // 鼠标悬停的高亮结果多边形（只读模式下）
+    int m_highlightedResultIndex = -1; // 手动选择的高亮结果多边形
 
     // Clip 和 Subject 集合
     QSet<int> m_clipPolygons;       // 加入 clip 的多边形
