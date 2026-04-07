@@ -321,12 +321,12 @@ QPointF Sketch2DView::snapToPixelCenter(const QPointF& p) const {
 
 QPointF Sketch2DView::worldToScreen(const QPointF& worldPos) const {
     const QPointF center(width() / 2.0, height() / 2.0);
-    return center + (worldPos - m_offset) * m_scale;
+    return center + QPointF((worldPos.x() - m_offset.x()) * m_scale, -(worldPos.y() - m_offset.y()) * m_scale);
 }
 
 QPointF Sketch2DView::screenToWorld(const QPointF& screenPos) const {
     const QPointF center(width() / 2.0, height() / 2.0);
-    return m_offset + (screenPos - center) / m_scale;
+    return m_offset + QPointF((screenPos.x() - center.x()) / m_scale, -(screenPos.y() - center.y()) / m_scale);
 }
 
 qreal Sketch2DView::angleDegAt(const QPointF& center, const QPointF& p) {
@@ -653,7 +653,8 @@ void Sketch2DView::mouseMoveEvent(QMouseEvent* event) {
     // Handle panning
     if (m_isPanning) {
         QPointF delta = event->position() - m_panStart;
-        m_offset -= delta / m_scale;
+        // Y轴反转：屏幕向上拖动对应世界坐标向上（Y增加）
+        m_offset -= QPointF(delta.x() / m_scale, -delta.y() / m_scale);
         m_panStart = event->position();
         update();
         QWidget::mouseMoveEvent(event);
@@ -664,7 +665,8 @@ void Sketch2DView::mouseMoveEvent(QMouseEvent* event) {
     if (m_dragMode == DragMode::Vertex && event->buttons() & (m_dragButton == Qt::LeftButton ? Qt::LeftButton : Qt::RightButton)) {
         auto& poly = m_draggedEdge.isPolygon ? m_polygons[m_draggedEdge.polygonIndex] : m_polylines[m_draggedEdge.polygonIndex];
         QPointF deltaScreen = screenPos - m_dragStartPos;
-        QPointF deltaWorld = deltaScreen / m_scale;
+        // Y轴反转：屏幕上向上拖动对应世界坐标Y增加
+        QPointF deltaWorld(deltaScreen.x() / m_scale, -deltaScreen.y() / m_scale);
         poly.vertices[m_draggedEdge.vertexIndex1].point = m_originalPoint + deltaWorld;
 
         // Mark as dragged if using right button
@@ -803,7 +805,7 @@ void Sketch2DView::paintEvent(QPaintEvent* event) {
 
     // Apply transform
     painter.translate(width() / 2.0, height() / 2.0);
-    painter.scale(m_scale, m_scale);
+    painter.scale(m_scale, -m_scale); // Y轴向上
     painter.translate(-m_offset.x(), -m_offset.y());
 
     // Background grid
@@ -1465,8 +1467,9 @@ void Sketch2DView::wheelEvent(QWheelEvent* event) {
     const QPointF screenCenter(width() / 2.0, height() / 2.0);
     const QPointF mousePos = event->position();
 
-    const QPointF oldWorldPos = m_offset + (mousePos - screenCenter) / oldScale;
-    const QPointF newWorldPos = m_offset + (mousePos - screenCenter) / m_scale;
+    // Y轴反转：屏幕坐标Y转世界坐标Y需要反转
+    const QPointF oldWorldPos = m_offset + QPointF((mousePos.x() - screenCenter.x()) / oldScale, -(mousePos.y() - screenCenter.y()) / oldScale);
+    const QPointF newWorldPos = m_offset + QPointF((mousePos.x() - screenCenter.x()) / m_scale, -(mousePos.y() - screenCenter.y()) / m_scale);
 
     m_offset += oldWorldPos - newWorldPos;
 
@@ -1477,7 +1480,11 @@ void Sketch2DView::wheelEvent(QWheelEvent* event) {
 QRectF Sketch2DView::getWorldBounds() const {
     const QPointF topLeft = screenToWorld(QPointF(0, 0));
     const QPointF bottomRight = screenToWorld(QPointF(width(), height()));
-    return QRectF(topLeft, bottomRight);
+    // 确保left < right, top < bottom (Y轴向上)
+    return QRectF(qMin(topLeft.x(), bottomRight.x()),
+                   qMin(topLeft.y(), bottomRight.y()),
+                   qAbs(bottomRight.x() - topLeft.x()),
+                   qAbs(bottomRight.y() - topLeft.y()));
 }
 
 void Sketch2DView::setSelectedPolygon(int index, bool isPolygon) {
