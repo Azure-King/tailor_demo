@@ -34,6 +34,9 @@ endif()
 # 查找 Qt6
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
+# 添加 tailor 库
+add_subdirectory(third_party/tailor)
+
 qt_add_executable(TailorDemo
     main.cpp
     Sketch2DView.h
@@ -46,10 +49,4 @@ qt_add_executable(TailorDemo
     PolygonIO.cpp
 )
 
-# 添加第三方库路径
-set(THIRD_PARTY_DIR "${CMAKE_CURRENT_SOURCE_DIR}/third_party")
-target_include_directories(TailorDemo PRIVATE
-    "${THIRD_PARTY_DIR}/tailor"
-)
-
-target_link_libraries(TailorDemo PRIVATE Qt6::Widgets)
+target_link_libraries(TailorDemo PRIVATE Qt6::Widgets tailor)
