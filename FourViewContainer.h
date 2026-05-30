@@ -5,6 +5,8 @@
 #include <QFrame>
 #include <QComboBox>
 #include <QSpinBox>
+#include <QPushButton>
+#include <QTimer>
 #include <memory>
 
 #include "BooleanOperations.h"
@@ -32,7 +34,7 @@ namespace tailor_visualization {
 class Sketch2DView;
 
 // Type alias for IConnectType Drafting parameter
-using AnalysisCore = tailor::ArcSegmentAnalyserCore<tailor_visualization::Arc, tailor::PrecisionCore<10>>;
+using AnalysisCore = tailor::ArcSegmentAnalyserCore<tailor_visualization::Arc, tailor_visualization::DynamicPrecisionCore>;
 using ConnectTypeDrafting = tailor::Tailor<tailor_visualization::Arc, tailor::ArcAnalysis<tailor_visualization::Arc ,AnalysisCore>>::PatternDrafting;
 
 // Fill type enumeration for pattern operations
@@ -47,6 +49,28 @@ enum class PatternFillType {
 enum class PatternConnectType {
     OuterFirst,         // Connect outer first
     InnerFirst          // Connect inner first
+};
+
+// Drafting 线段信息，用于输出模型树展示
+struct DraftingSegmentInfo {
+    int index = 0;
+    double startX = 0, startY = 0;
+    double endX = 0, endY = 0;
+    double bulge = 0;
+    tailor::Handle startPntGroup = 0;
+    tailor::Handle endPntGroup = 0;
+    bool isPolygonSetB = false;
+    bool reversed = false;
+    tailor::Int windB = 0;              // 边上方区域的 polygonSetB 环绕数
+    tailor::Int windA = 0;              // 边上方区域的 polygonSetA 环绕数
+    tailor::Int windBContribution = 0;  // 该边对 windB 的环绕贡献（+1正向, -1反向）
+    tailor::Int windAContribution = 0;  // 该边对 windA 的环绕贡献（+1正向, -1反向）
+    bool isAggregated = false;          // 是否为聚合边（含多条重合源边）
+    bool end = false;
+    bool discarded = false;
+
+    bool isArc() const { return std::abs(bulge) > 0; }
+    const char* setName() const { return isPolygonSetB ? "Clip" : "Subject"; }
 };
 
 class FourViewContainer : public QWidget {
@@ -66,6 +90,7 @@ public:
 
     // Synchronize view state from main view to all views
     void synchronizeViews();
+    void synchronizeViewsDeferred();
 
     // 获取当前FillType的IFillType指针
     const tailor_visualization::IFillType* getClipFillType() const;
@@ -76,8 +101,19 @@ public:
     const tailor_visualization::IConnectType<ConnectTypeDrafting>* getBottomLeftConnectType() const;
     const tailor_visualization::IConnectType<ConnectTypeDrafting>* getBottomRightConnectType() const;
 
+    // Drafting debug mode
+    bool isDebugMode() const { return m_debugMode; }
+    void setDebugMode(bool debugMode);
+    void toggleDebugMode();
+    void updateDebugDrafting();
+
+    // Drafting segments for output tree
+    void refreshDraftingSegments();
+    const std::vector<DraftingSegmentInfo>& draftingSegments() const { return m_draftingSegments; }
+
 signals:
     void booleanOperationTriggered(int operationIndex);
+    void dataChanged();
 
 private:
     void setupViews();
@@ -85,6 +121,7 @@ private:
     void setupBooleanComboBox();
     void setupFillTypeComboBoxes();
     void setupConnectTypeComboBoxes();
+    void setupPrecisionControl();
     void updateWindingSpinBoxStyle(QSpinBox* spinBox, int value);
 
     Sketch2DView* m_mainView = nullptr;
@@ -95,6 +132,7 @@ private:
     QFrame* m_frameBottomRight = nullptr;
     QFrame* m_frameTopRight = nullptr;
     QFrame* m_frameBottomLeft = nullptr;
+    QFrame* m_frameMain = nullptr;  // 用于放置精度控件
 
     QGridLayout* m_layout = nullptr;
     QComboBox* m_booleanComboBox = nullptr;
@@ -115,6 +153,19 @@ private:
     PatternConnectType m_bottomLeftConnectType = PatternConnectType::OuterFirst;
     PatternConnectType m_bottomRightConnectType = PatternConnectType::OuterFirst;
     // PatternFillType m_booleanFillType = PatternFillType::EvenOdd; // 已移除，使用Clip和Subject视图的FillType
+
+    // 精度控制
+    QSpinBox* m_precisionSpinBox = nullptr;
+
+    // Drafting debug toggle
+    QPushButton* m_debugToggleButton = nullptr;
+    bool m_debugMode = false;
+
+    // Drafting 线段缓存
+    std::vector<DraftingSegmentInfo> m_draftingSegments;
+
+    // 防抖计时器，避免拖拽修改时高频刷新
+    QTimer* m_debounceTimer = nullptr;
 
     // Current boolean operation type (default: Union = 0)
     int m_currentBooleanOperation = 0;

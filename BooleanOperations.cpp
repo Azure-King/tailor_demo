@@ -6,6 +6,15 @@
 
 namespace tailor_visualization {
 
+    // ========== 动态精度核心实现 ==========
+    
+    // 静态成员变量定义
+    double DynamicPrecisionCore::VALUE_EPSILON = DynamicPrecisionCore::Epsilon(DynamicPrecisionCore::DEFAULT_PRECISION);
+    double DynamicPrecisionCore::POINT_EPSILON = DynamicPrecisionCore::Epsilon(DynamicPrecisionCore::DEFAULT_PRECISION);
+    double DynamicPrecisionCore::ANGLE_EPSILON = DynamicPrecisionCore::Epsilon(DynamicPrecisionCore::DEFAULT_PRECISION);
+
+    // ========== BooleanOperations 实现 ==========
+
     BooleanOperations::BooleanOperations()
         : arcAnalysis_() {
     }
@@ -53,13 +62,13 @@ namespace tailor_visualization {
         // 添加所有Clip多边形（裁剪多边形）并分割为单调弧段
         for (const auto& clipPoly : clipPolygons_) {
             auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddClipper(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
         }
 
         // 添加所有Subject多边形（被裁剪多边形）并分割为单调弧段
         for (const auto& subjectPoly : subjectPolygons_) {
             auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddSubject(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
         }
 
         // 执行布尔运算
@@ -82,13 +91,13 @@ namespace tailor_visualization {
         // 添加所有Clip多边形（裁剪多边形）并分割为单调弧段
         for (const auto& clipPoly : clipPolygons_) {
             auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddClipper(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
         }
 
         // 添加所有Subject多边形（被裁剪多边形）并分割为单调弧段
         for (const auto& subjectPoly : subjectPolygons_) {
             auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddSubject(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
         }
 
         // 执行裁剪
@@ -115,13 +124,13 @@ namespace tailor_visualization {
         // 添加所有Clip多边形（裁剪多边形）并分割为单调弧段
         for (const auto& clipPoly : clipPolygons_) {
             auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddClipper(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
         }
 
         // 添加所有Subject多边形（被裁剪多边形）并分割为单调弧段
         for (const auto& subjectPoly : subjectPolygons_) {
             auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddSubject(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
         }
 
         // 执行裁剪
@@ -205,7 +214,7 @@ namespace tailor_visualization {
         // 添加 Clip 集合的多边形
         for (const auto& clipPoly : clipPolygons_) {
             auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddClipper(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
         }
 
         // 执行
@@ -240,13 +249,13 @@ namespace tailor_visualization {
             using FillType = std::decay_t<decltype(type)>;
 
             if (useInnerFirst) {
-                tailor::OnlyClipPattern<FillType, tailor::ConnectTypeInnerFirst> pattern;
+                tailor::PolygonSetBPattern<FillType, tailor::ConnectTypeInnerFirst> pattern;
                 auto polytree = pattern.Stitch(drafting);
                 for (const auto& tree : polytree) {
                     ForEachPolyTree<tailor::PolyEdgeInfo>(tree, fun);
                 }
             } else {
-                tailor::OnlyClipPattern<FillType, tailor::ConnectTypeOuterFirst> pattern;
+                tailor::PolygonSetBPattern<FillType, tailor::ConnectTypeOuterFirst> pattern;
                 auto polytree = pattern.Stitch(drafting);
                 for (const auto& tree : polytree) {
                     ForEachPolyTree<tailor::PolyEdgeInfo>(tree, fun);
@@ -278,7 +287,7 @@ namespace tailor_visualization {
         // 添加 Subject 集合的多边形
         for (const auto& subjectPoly : subjectPolygons_) {
             auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddSubject(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
         }
 
         // 执行
@@ -313,13 +322,13 @@ namespace tailor_visualization {
             using FillType = std::decay_t<decltype(type)>;
 
             if (useInnerFirst) {
-                tailor::OnlySubjectPattern<FillType, tailor::ConnectTypeInnerFirst> pattern;
+                tailor::PolygonSetAPattern<FillType, tailor::ConnectTypeInnerFirst> pattern;
                 auto polytree = pattern.Stitch(drafting);
                 for (const auto& tree : polytree) {
                     ForEachPolyTree<tailor::PolyEdgeInfo>(tree, fun);
                 }
             } else {
-                tailor::OnlySubjectPattern<FillType, tailor::ConnectTypeOuterFirst> pattern;
+                tailor::PolygonSetAPattern<FillType, tailor::ConnectTypeOuterFirst> pattern;
                 auto polytree = pattern.Stitch(drafting);
                 for (const auto& tree : polytree) {
                     ForEachPolyTree<tailor::PolyEdgeInfo>(tree, fun);
@@ -342,13 +351,13 @@ namespace tailor_visualization {
         // 添加所有Clip多边形（需要分割为单调弧段）
         for (const auto& clipPoly : clipPolygons_) {
             auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddClipper(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
         }
 
         // 添加所有Subject多边形（需要分割为单调弧段）
         for (const auto& subjectPoly : subjectPolygons_) {
             auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddSubject(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
         }
 
         // 执行并返回drafting
@@ -898,29 +907,29 @@ namespace tailor_visualization {
             if (!edge.end) continue;
 
             tailor::EdgeGroupFillStatus status;
-            status.clipper.wind = edge.clipperWind;
-            status.clipper.positive = 0;
-            status.clipper.negitive = 0;
-            status.subject.wind = edge.subjectWind;
-            status.subject.positive = 0;
-            status.subject.negitive = 0;
+            status.polygonSetB.wind = edge.windB;
+            status.polygonSetB.positive = 0;
+            status.polygonSetB.negitive = 0;
+            status.polygonSetA.wind = edge.windA;
+            status.polygonSetA.positive = 0;
+            status.polygonSetA.negitive = 0;
 
             // 统计正向和负向边
             if (edge.aggregatedEdges) {
                 for (auto id : edge.aggregatedEdges->sourceEdges) {
                     const auto& srcEdge = drafting.edgeEvent[id];
-                    if (srcEdge.isClipper) {
-                        srcEdge.reversed ? (++status.clipper.negitive) : (++status.clipper.positive);
+                    if (srcEdge.isPolygonSetB) {
+                        srcEdge.reversed ? (++status.polygonSetB.negitive) : (++status.polygonSetB.positive);
                     } else {
-                        srcEdge.reversed ? (++status.subject.negitive) : (++status.subject.positive);
+                        srcEdge.reversed ? (++status.polygonSetA.negitive) : (++status.polygonSetA.positive);
                     }
                 }
             }
 
             // 计算边界类型
-            auto subjectBoundary = (*subjectFillType)(status.subject);
-            auto clipperBoundary = (*clipFillType)(status.clipper);
-            auto resultBoundary = boolOperation(subjectBoundary, clipperBoundary);
+            auto polygon_set_a_boundary = (*subjectFillType)(status.polygonSetA);
+            auto polygon_set_b_boundary = (*clipFillType)(status.polygonSetB);
+            auto resultBoundary = boolOperation(polygon_set_a_boundary, polygon_set_b_boundary);
 
             types[edge.id] = resultBoundary;
         }
@@ -1003,7 +1012,7 @@ namespace tailor_visualization {
         // 添加 Clip 集合的多边形
         for (const auto& clipPoly : clipPolygons_) {
             auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddClipper(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
         }
 
         // 执行
@@ -1040,13 +1049,13 @@ namespace tailor_visualization {
             using FillType = std::decay_t<decltype(type)>;
 
             if (useInnerFirst) {
-                tailor::OnlyClipPattern<FillType, tailor::ConnectTypeInnerFirst> pattern;
+                tailor::PolygonSetBPattern<FillType, tailor::ConnectTypeInnerFirst> pattern;
                 auto polytree = pattern.Stitch(drafting);
                 for (const auto& tree : polytree) {
                     ForEachPolyTreeWithDepth<tailor::PolyEdgeInfo>(tree, 0, fun);
                 }
             } else {
-                tailor::OnlyClipPattern<FillType, tailor::ConnectTypeOuterFirst> pattern;
+                tailor::PolygonSetBPattern<FillType, tailor::ConnectTypeOuterFirst> pattern;
                 auto polytree = pattern.Stitch(drafting);
                 for (const auto& tree : polytree) {
                     ForEachPolyTreeWithDepth<tailor::PolyEdgeInfo>(tree, 0, fun);
@@ -1078,7 +1087,7 @@ namespace tailor_visualization {
         // 添加 Subject 集合的多边形
         for (const auto& subjectPoly : subjectPolygons_) {
             auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddSubject(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
         }
 
         // 执行
@@ -1115,13 +1124,13 @@ namespace tailor_visualization {
             using FillType = std::decay_t<decltype(type)>;
 
             if (useInnerFirst) {
-                tailor::OnlySubjectPattern<FillType, tailor::ConnectTypeInnerFirst> pattern;
+                tailor::PolygonSetAPattern<FillType, tailor::ConnectTypeInnerFirst> pattern;
                 auto polytree = pattern.Stitch(drafting);
                 for (const auto& tree : polytree) {
                     ForEachPolyTreeWithDepth<tailor::PolyEdgeInfo>(tree, 0, fun);
                 }
             } else {
-                tailor::OnlySubjectPattern<FillType, tailor::ConnectTypeOuterFirst> pattern;
+                tailor::PolygonSetAPattern<FillType, tailor::ConnectTypeOuterFirst> pattern;
                 auto polytree = pattern.Stitch(drafting);
                 for (const auto& tree : polytree) {
                     ForEachPolyTreeWithDepth<tailor::PolyEdgeInfo>(tree, 0, fun);
@@ -1151,13 +1160,13 @@ namespace tailor_visualization {
         // 添加所有Clip多边形（裁剪多边形）并分割为单调弧段
         for (const auto& clipPoly : clipPolygons_) {
             auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddClipper(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
         }
 
         // 添加所有Subject多边形（被裁剪多边形）并分割为单调弧段
         for (const auto& subjectPoly : subjectPolygons_) {
             auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddSubject(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
         }
 
         // 执行裁剪

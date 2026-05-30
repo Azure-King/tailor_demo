@@ -11,13 +11,24 @@
 // Type alias for IConnectType Drafting parameter
 using ArcPoint = tailor::Point<double>;
 using ArcSegment = tailor::ArcSegment<ArcPoint, double, QRgba64>;
-using ArcTailor2 = tailor::Tailor<ArcSegment, tailor::ArcAnalysis<ArcSegment, tailor::ArcSegmentAnalyserCore<ArcSegment, tailor::PrecisionCore<10>>>>;
+using ArcTailor2 = tailor::Tailor<ArcSegment, tailor::ArcAnalysis<ArcSegment, tailor::ArcSegmentAnalyserCore<ArcSegment, tailor_visualization::DynamicPrecisionCore>>>;
 using ConnectTypeDrafting = ArcTailor2::PatternDrafting;
 
 // Forward declarations
 namespace tailor_visualization {
     enum class BooleanOperation;
 }
+
+// Debug drafting edge info
+struct DraftingEdgeInfo {
+    ArcSegment edge;         // the actual edge (arc segment)
+    bool isPolygonSetB = false; // true = polygonSetB, false = polygonSetA
+    bool reversed = false;     // direction reversed
+    tailor::Int windB = 0;
+    tailor::Int windA = 0;
+    bool end = false;          // is this an end edge
+    bool discarded = false;    // is this edge discarded
+};
 
 class Sketch2DView : public QWidget {
     Q_OBJECT
@@ -132,7 +143,7 @@ public:
     const QVector<BooleanResultPolygon>& booleanResults() const { return m_booleanResults; }
     void clearBooleanResults() { m_booleanResults.clear(); update(); }
 
-    // Clip 和 Subject 原始多边形结果（使用 OnlyClipPattern 和 OnlySubjectPattern 处理）
+    // polygonSetB 和 polygonSetA 原始多边形结果（使用 PolygonSetBPattern 和 PolygonSetAPattern 处理）
     void setClipPatternResults(const QVector<BooleanResultPolygon>& results);
     const QVector<BooleanResultPolygon>& clipPatternResults() const { return m_clipPatternResults; }
     void setSubjectPatternResults(const QVector<BooleanResultPolygon>& results);
@@ -170,6 +181,21 @@ public:
 
     // 导出多边形到文件用于调试
     void debugExportPolygons(const QString& filename, const QSet<int>& indices, const QString& setName) const;
+
+    // Drafting debug visualization
+    void setDebugDrafting(const std::vector<DraftingEdgeInfo>& edges);
+    void clearDraftingDebug();
+    bool isShowingDraftingDebug() const { return m_showDraftingDebug; }
+    void setHighlightedDraftingSegment(int index);
+    void clearHighlightedDraftingSegment();
+    int highlightedDraftingSegmentIndex() const { return m_highlightedDraftingIndex; }
+
+    // Drafting segment hit testing
+    int findNearestDraftingSegmentIndex(const QPointF& worldPos) const;
+
+    // Check if an angle (in degrees) lies within an arc segment's sweep
+    static bool isAngleOnArcSegment(qreal angle, qreal startAngle, qreal spanAngle);
+
 protected:
     void paintEvent(QPaintEvent* event) override;
     void mousePressEvent(QMouseEvent* event) override;
@@ -285,6 +311,13 @@ private:
     // Mouse position for HUD
     QPointF m_mousePos;
 
+    // Drafting debug visualization
+    bool m_showDraftingDebug = false;
+    std::vector<DraftingEdgeInfo> m_draftingEdges;
+    int m_highlightedDraftingIndex = -1;
+    int m_hoveredDraftingIndex = -1;   // 鼠标悬停的 drafting 线段索引
+    int m_selectedDraftingIndex = -1;  // 点击选中的 drafting 线段索引
+
     bool computeArcThrough3Points(const QPointF& p1, const QPointF& p2, const QPointF& p3, ArcSegment& outArc) const;
 
 signals:
@@ -298,4 +331,5 @@ signals:
     void polygonModified();
     void polygonColorChanged(int polygonIndex, const QColor& color);
     void polygonRoleChanged(int index, bool isPolygon);
+    void draftingSegmentSelectedInView(int index);  // 在调试视图中点击 drafting 线段
 };

@@ -3,6 +3,7 @@
 #include <QSplitter>
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
+#include <QTextEdit>
 #include <QVBoxLayout>
 
 #include <QAction>
@@ -16,6 +17,7 @@
 #include <QColorDialog>
 #include <QTimer>
 #include <QMessageBox>
+#include <QScrollBar>
 
 #include "Sketch2DView.h"
 #include "FourViewContainer.h"
@@ -112,11 +114,81 @@ void updateSubjectPatternResultsTree(Sketch2DView* view, QTreeWidgetItem* subjec
     }
 }
 
+// 更新 Drafting 线段模型树的辅助函数
+void updateDraftingSegmentsTree(FourViewContainer* viewContainer, QTreeWidgetItem* draftingSegmentsItem) {
+    // 保存当前选中的 drafting 线段索引
+    QSet<int> selectedSegIndices;
+    auto* tree = draftingSegmentsItem->treeWidget();
+    if (tree) {
+        for (auto* item : tree->selectedItems()) {
+            if (item->parent() == draftingSegmentsItem) {
+                int type = item->data(0, Qt::UserRole).toInt();
+                if (type >= 400) {
+                    selectedSegIndices.insert(type - 400);
+                }
+            }
+        }
+    }
+
+    // 清空现有子节点（阻塞信号避免信息面板闪动）
+    if (tree) tree->blockSignals(true);
+    while (draftingSegmentsItem->childCount() > 0) {
+        delete draftingSegmentsItem->child(0);
+    }
+
+    const auto& segments = viewContainer->draftingSegments();
+
+    for (int i = 0; i < (int)segments.size(); ++i) {
+        const auto& seg = segments[i];
+
+        QString flags;
+        if (seg.reversed) flags += "反";
+        else flags += "正";
+        if (seg.isArc()) flags += ",弧";
+        if (seg.end) flags += ",end";
+        if (seg.discarded) flags += ",无效";  // discarded 与 end 含义相近但表示相反
+
+        QString name = QString("线段#%1: %2 (%3)→(%4) [%5]")
+            .arg(seg.index)
+            .arg(seg.setName())
+            .arg(QString("(%1,%2)").arg(seg.startX, 0, 'f', 1).arg(seg.startY, 0, 'f', 1))
+            .arg(QString("(%1,%2)").arg(seg.endX, 0, 'f', 1).arg(seg.endY, 0, 'f', 1))
+            .arg(flags);
+
+        auto* item = new QTreeWidgetItem(draftingSegmentsItem);
+        item->setText(0, name);
+        item->setData(0, Qt::UserRole, 400 + seg.index); // 400+ 表示 Drafting 线段
+
+        // 着色规则：discarded边(被废弃的中间边)使用灰色，正常end边按集合着色
+        if (seg.discarded) {
+            item->setForeground(0, QBrush(QColor(128, 128, 128))); // 灰色 = 废弃中间边
+        } else if (seg.isPolygonSetB) {
+            item->setForeground(0, QBrush(QColor(0, 120, 255))); // 蓝色 = Clip
+        } else {
+            item->setForeground(0, QBrush(QColor(255, 80, 80))); // 红色 = Subject
+        }
+
+        // 恢复之前选中的线段
+        if (selectedSegIndices.contains(seg.index)) {
+            item->setSelected(true);
+        }
+    }
+
+    // 恢复信号，手动触发一次 selectionChanged 以更新信息面板
+    if (tree) {
+        tree->blockSignals(false);
+        if (!selectedSegIndices.isEmpty()) {
+            emit tree->itemSelectionChanged();
+        }
+    }
+}
+
 // 更新所有结果模型树的辅助函数
 void updateAllResultsTrees(FourViewContainer* viewContainer,
     QTreeWidgetItem* booleanResultsItem,
     QTreeWidgetItem* clipPatternResultsItem,
-    QTreeWidgetItem* subjectPatternResultsItem) {
+    QTreeWidgetItem* subjectPatternResultsItem,
+    QTreeWidgetItem* draftingSegmentsItem) {
     // 更新布尔运算结果
     updateBooleanResultsTree(viewContainer->bottomRightView(), booleanResultsItem);
 
@@ -125,6 +197,9 @@ void updateAllResultsTrees(FourViewContainer* viewContainer,
 
     // 更新 Subject Pattern 结果
     updateSubjectPatternResultsTree(viewContainer->topRightView(), subjectPatternResultsItem);
+
+    // 更新 Drafting 线段
+    updateDraftingSegmentsTree(viewContainer, draftingSegmentsItem);
 }
 
 int main(int argc, char* argv[]) {
@@ -176,10 +251,22 @@ int main(int argc, char* argv[]) {
     subjectPatternResultsItem->setText(0, "Subject Pattern");
     subjectPatternResultsItem->setExpanded(true);
 
-    // 设置左侧分割器的比例（输入在上，输出在下）
+    // Drafting 线段节点
+    auto* draftingSegmentsItem = new QTreeWidgetItem(outputModelTree);
+    draftingSegmentsItem->setText(0, "Drafting 线段");
+    draftingSegmentsItem->setExpanded(true);
+
+    // Drafting 线段信息面板（嵌入在左侧，非弹窗）
+    auto* draftingInfoPanel = new QTextEdit(leftSplitter);
+    draftingInfoPanel->setReadOnly(true);
+    draftingInfoPanel->setPlaceholderText("选中 Drafting 线段查看详细信息");
+    draftingInfoPanel->setMinimumHeight(80);
+
+    // 设置左侧分割器的比例（输入在上，输出在中，信息面板在下）
     leftSplitter->setStretchFactor(0, 1);  // 输入模型树
-    leftSplitter->setStretchFactor(1, 1);  // 输出模型树
-    leftSplitter->setSizes({ 200, 200 });
+    leftSplitter->setStretchFactor(1, 2);  // 输出模型树
+    leftSplitter->setStretchFactor(2, 1);  // 信息面板（可自由拉长）
+    leftSplitter->setSizes({ 200, 300, 150 });
 
     // Use FourViewContainer instead of single Sketch2DView
     auto* viewContainer = new FourViewContainer(&window);
@@ -210,6 +297,11 @@ int main(int argc, char* argv[]) {
     QAction* importAction = toolbar->addAction("Import");
     importAction->setShortcut(QKeySequence("Ctrl+I"));
 
+    // Drafting debug toggle button
+    QAction* debugDraftingAction = toolbar->addAction("调试Drafting");
+    debugDraftingAction->setCheckable(true);
+    debugDraftingAction->setToolTip("切换Drafting数据结构调试视图\n直接可视化end曲线段，不调用Pattern算法");
+
     // 设置多边形为默认模式
     polygonAction->setChecked(true);
     view->setTool(Sketch2DView::Tool::Polygon);
@@ -218,6 +310,16 @@ int main(int argc, char* argv[]) {
         polylineAction->setChecked(true);
         polygonAction->setChecked(false);
         view->setTool(Sketch2DView::Tool::Polyline);
+        });
+
+    QObject::connect(debugDraftingAction, &QAction::triggered, [debugDraftingAction, viewContainer]() {
+        bool checked = debugDraftingAction->isChecked();
+        viewContainer->setDebugMode(checked);
+        if (checked) {
+            debugDraftingAction->setText("退出调试");
+        } else {
+            debugDraftingAction->setText("调试Drafting");
+        }
         });
 
     QObject::connect(polygonAction, &QAction::triggered, [&]() {
@@ -315,39 +417,27 @@ int main(int argc, char* argv[]) {
         }
         bottomRightView->executeBooleanOperation(operation);
         viewContainer->synchronizeViews();
-
-        // 更新布尔运算结果模型树
-        updateBooleanResultsTree(bottomRightView, booleanResultsItem);
+        // 模型树更新由 dataChanged 信号驱动
         });
 
-    QObject::connect(view, &Sketch2DView::polylineAdded, [polylinesItem, viewContainer, booleanResultsItem, clipPatternResultsItem, subjectPatternResultsItem](int index, const QString& name) {
+    QObject::connect(view, &Sketch2DView::polylineAdded, [polylinesItem](int index, const QString& name) {
         auto* item = new QTreeWidgetItem(polylinesItem);
         item->setText(0, name);
         item->setData(0, Qt::UserRole, 0); // 0 = polyline
         // 不再存储索引，使用在父节点中的位置
-
-        // 当多段线添加时，更新所有结果模型树
-        updateAllResultsTrees(viewContainer,
-            booleanResultsItem,
-            clipPatternResultsItem,
-            subjectPatternResultsItem);
+        // 模型树更新由 dataChanged 信号驱动
         });
 
-    QObject::connect(view, &Sketch2DView::polygonAdded, [polygonsItem, viewContainer, booleanResultsItem, clipPatternResultsItem, subjectPatternResultsItem](int index, const QString& name) {
+    QObject::connect(view, &Sketch2DView::polygonAdded, [polygonsItem](int index, const QString& name) {
         auto* item = new QTreeWidgetItem(polygonsItem);
         item->setText(0, name);
         item->setData(0, Qt::UserRole, 1); // 1 = polygon
         // 不再存储索引，使用在父节点中的位置
-
-        // 当多边形添加时，更新所有结果模型树
-        updateAllResultsTrees(viewContainer,
-            booleanResultsItem,
-            clipPatternResultsItem,
-            subjectPatternResultsItem);
+        // 模型树更新由 dataChanged 信号驱动
         });
 
     // 处理 polygonRoleChanged 信号，更新模型树颜色
-    QObject::connect(view, &Sketch2DView::polygonRoleChanged, [polygonsItem, polylinesItem, view, viewContainer, booleanResultsItem, clipPatternResultsItem, subjectPatternResultsItem](int index, bool isPolygon) {
+    QObject::connect(view, &Sketch2DView::polygonRoleChanged, [polygonsItem, polylinesItem, view](int index, bool isPolygon) {
         QTreeWidgetItem* parentItem = isPolygon ? polygonsItem : polylinesItem;
         if (index >= 0 && index < parentItem->childCount()) {
             QTreeWidgetItem* item = parentItem->child(index);
@@ -362,12 +452,7 @@ int main(int argc, char* argv[]) {
                 item->setForeground(0, QBrush()); // 恢复默认颜色
             }
         }
-
-        // 当多边形角色改变时，更新所有结果模型树
-        updateAllResultsTrees(viewContainer,
-            booleanResultsItem,
-            clipPatternResultsItem,
-            subjectPatternResultsItem);
+        // 模型树更新由 dataChanged 信号驱动
         });
 
     // ==================== 输入模型树选择变化 ====================
@@ -424,8 +509,24 @@ int main(int argc, char* argv[]) {
         }
         });
 
+    // ==================== 调试视图点击 drafting 线段 → 同步模型树选中 ====================
+    QObject::connect(viewContainer->mainView(), &Sketch2DView::draftingSegmentSelectedInView,
+        [viewContainer, draftingSegmentsItem, outputModelTree](int index) {
+            // 在模型树中找到对应的 drafting 线段项并选中
+            for (int i = 0; i < draftingSegmentsItem->childCount(); ++i) {
+                auto* child = draftingSegmentsItem->child(i);
+                int type = child->data(0, Qt::UserRole).toInt();
+                if (type - 400 == index) {
+                    outputModelTree->clearSelection();
+                    child->setSelected(true);
+                    outputModelTree->scrollToItem(child);
+                    break;
+                }
+            }
+        });
+
     // ==================== 输出模型树选择变化 ====================
-    QObject::connect(outputModelTree, &QTreeWidget::itemSelectionChanged, [outputModelTree, viewContainer]() {
+    QObject::connect(outputModelTree, &QTreeWidget::itemSelectionChanged, [outputModelTree, viewContainer, draftingInfoPanel]() {
         auto selectedItems = outputModelTree->selectedItems();
 
         // 获取所有结果视图
@@ -439,6 +540,8 @@ int main(int argc, char* argv[]) {
         topRightView->clearHighlightedResult();
 
         if (selectedItems.isEmpty()) {
+            draftingInfoPanel->clear();
+            viewContainer->mainView()->clearHighlightedDraftingSegment();
             return;
         }
 
@@ -461,11 +564,61 @@ int main(int argc, char* argv[]) {
             } else if (type >= 200 && type < 300) { // Clip Pattern 结果 (200-299)
                 int resultIndex = type - 200; // 转换为实际索引
                 clipPatternResultIndices.insert(resultIndex);
-            } else if (type >= 300) { // Subject Pattern 结果 (300+)
-                int resultIndex = type - 300; // 转换为实际索引
-                subjectPatternResultIndices.insert(resultIndex);
+            } else if (type >= 400) { // Drafting 线段 (400+)
+                // Drafting segment selected - will show detail info below
             }
             // 注意：输出模型树不应该包含普通多边形/多段线（类型0-1）
+        }
+
+        // 检查是否选中了 Drafting 线段，如果是则在信息面板中显示详细信息
+        bool hasDraftingSelection = false;
+        for (QTreeWidgetItem* item : selectedItems) {
+            if (!item->parent()) continue;
+            int type = item->data(0, Qt::UserRole).toInt();
+            if (type >= 400) {
+                int segIndex = type - 400;
+                const auto& segments = viewContainer->draftingSegments();
+                const DraftingSegmentInfo* seg = nullptr;
+                for (const auto& s : segments) {
+                    if (s.index == segIndex) {
+                        seg = &s;
+                        break;
+                    }
+                }
+                if (seg) {
+                    QString info;
+                    info += QString("<h3>线段 #%1</h3>").arg(seg->index);
+                    info += "<table>";
+                    info += QString("<tr><td><b>所属集合:</b></td><td>%1</td></tr>").arg(seg->setName());
+                    info += QString("<tr><td><b>起点坐标:</b></td><td>(%1, %2)</td></tr>").arg(seg->startX, 0, 'f', 3).arg(seg->startY, 0, 'f', 3);
+                    info += QString("<tr><td><b>终点坐标:</b></td><td>(%1, %2)</td></tr>").arg(seg->endX, 0, 'f', 3).arg(seg->endY, 0, 'f', 3);
+                    info += QString("<tr><td><b>起点顶点组:</b></td><td>%1</td></tr>").arg(seg->startPntGroup == static_cast<tailor::Handle>(-1) ? QString("npos") : QString::number(seg->startPntGroup));
+                    info += QString("<tr><td><b>终点顶点组:</b></td><td>%1</td></tr>").arg(seg->endPntGroup == static_cast<tailor::Handle>(-1) ? QString("npos") : QString::number(seg->endPntGroup));
+                    info += QString("<tr><td><b>是否反转:</b></td><td>%1</td></tr>").arg(seg->reversed ? "是" : "否");
+                    info += QString("<tr><td><b>是否是圆弧:</b></td><td>%1</td></tr>").arg(seg->isArc() ? QString("是 (bulge=%2)").arg(seg->bulge, 0, 'f', 6) : "否");
+                    info += QString("<tr><td><b>区域 windB (下方):</b></td><td>%1</td></tr>").arg(seg->windB);
+                    info += QString("<tr><td><b>区域 windA (下方):</b></td><td>%1</td></tr>").arg(seg->windA);
+                    info += QString("<tr><td><b>聚合边:</b></td><td>%1</td></tr>").arg(seg->isAggregated ? "是" : "否");
+                    info += QString("<tr><td><b>windB 贡献:</b></td><td>%1</td></tr>").arg(seg->windBContribution);
+                    info += QString("<tr><td><b>windA 贡献:</b></td><td>%1</td></tr>").arg(seg->windAContribution);
+                    info += QString("<tr><td><b>end:</b></td><td>%1</td></tr>").arg(seg->end ? "true" : "false");
+                    info += QString("<tr><td><b>discarded:</b></td><td>%1</td></tr>").arg(seg->discarded ? "true" : "false");
+                    info += "</table>";
+
+                    draftingInfoPanel->setHtml(info);
+
+                    // 高亮调试视图中对应的线段
+                    viewContainer->mainView()->setHighlightedDraftingSegment(segIndex);
+                }
+                hasDraftingSelection = true;
+                break;
+            }
+        }
+
+        // 当未选中 Drafting 线段时清空信息面板和高亮
+        if (!hasDraftingSelection) {
+            draftingInfoPanel->clear();
+            viewContainer->mainView()->clearHighlightedDraftingSegment();
         }
 
         // 处理结果多边形的高亮
@@ -1025,21 +1178,20 @@ int main(int argc, char* argv[]) {
         }
         });
 
-    // 添加定时器定期更新结果模型树（确保不会漏掉任何更新）
-    QTimer* updateTimer = new QTimer();
-    QObject::connect(updateTimer, &QTimer::timeout, [viewContainer, booleanResultsItem, clipPatternResultsItem, subjectPatternResultsItem]() {
+    // 改为事件驱动：FourViewContainer 数据变化时更新模型树，不再使用1秒轮询定时器
+    QObject::connect(viewContainer, &FourViewContainer::dataChanged, [viewContainer, booleanResultsItem, clipPatternResultsItem, subjectPatternResultsItem, draftingSegmentsItem, outputModelTree]() {
+        // 保存当前滚动位置，避免重建时跳动
+        int scrollPos = outputModelTree->verticalScrollBar()->value();
         updateAllResultsTrees(viewContainer,
             booleanResultsItem,
             clipPatternResultsItem,
-            subjectPatternResultsItem);
+            subjectPatternResultsItem,
+            draftingSegmentsItem);
+        outputModelTree->verticalScrollBar()->setValue(scrollPos);
         });
-    updateTimer->start(1000); // 每秒检查一次
 
-    // 初始更新所有结果模型树
-    updateAllResultsTrees(viewContainer,
-        booleanResultsItem,
-        clipPatternResultsItem,
-        subjectPatternResultsItem);
+    // 初始同步：触发数据计算并通过 dataChanged 信号更新模型树
+    viewContainer->synchronizeViews();
 
     window.show();
 

@@ -22,6 +22,8 @@
 #include <QDir>
 #include <limits>
 #include <QDebug>
+#include <QToolTip>
+#include <QCursor>
 
 // 辅助函数：将QColor转换为QRgba64
 static QRgba64 QColorToQRgba64(const QColor& color) {
@@ -506,8 +508,22 @@ bool Sketch2DView::computeArcThrough3Points(const QPointF& p1, const QPointF& p2
 
 
 void Sketch2DView::mousePressEvent(QMouseEvent* event) {
-    const QPointF p = snapToPixelCenter(screenToWorld(event->position()));
     const QPointF screenPos = event->position();
+    const QPointF p = screenToWorld(screenPos);
+
+    // 调试模式下：点击 drafting 线段进行选中
+    if (m_showDraftingDebug && event->button() == Qt::LeftButton) {
+        int idx = findNearestDraftingSegmentIndex(p);
+        if (idx >= 0) {
+            m_selectedDraftingIndex = idx;
+            m_highlightedDraftingIndex = idx;
+            m_hoveredDraftingIndex = -1;
+            update();
+            emit draftingSegmentSelectedInView(idx);
+            QWidget::mousePressEvent(event);
+            return;
+        }
+    }
 
     // Middle mouse button starts panning (always allowed, even in read-only mode)
     if (event->button() == Qt::MiddleButton) {
@@ -578,6 +594,34 @@ void Sketch2DView::mouseMoveEvent(QMouseEvent* event) {
     const QPointF screenPos = event->position();
     m_mousePos = screenPos;
     const QPointF p = screenToWorld(screenPos);
+
+    // 调试模式下：检测 drafting 线段悬停
+    if (m_showDraftingDebug) {
+        int oldHovered = m_hoveredDraftingIndex;
+        m_hoveredDraftingIndex = findNearestDraftingSegmentIndex(p);
+
+        if (m_hoveredDraftingIndex != oldHovered) {
+            update();
+        }
+
+        // 显示 tooltip
+        if (m_hoveredDraftingIndex >= 0) {
+            QToolTip::showText(event->globalPosition().toPoint(),
+                QString("线段 #%1").arg(m_hoveredDraftingIndex), this);
+        } else {
+            QToolTip::hideText();
+        }
+
+        // Handle panning in debug mode
+        if (m_isPanning) {
+            QPointF delta = event->position() - m_panStart;
+            m_offset -= QPointF(delta.x() / m_scale, -delta.y() / m_scale);
+            m_panStart = event->position();
+            update();
+        }
+        QWidget::mouseMoveEvent(event);
+        return;
+    }
 
     // 只读模式下检测鼠标悬停的多边形
     if (m_readOnly) {
@@ -775,6 +819,8 @@ void Sketch2DView::leaveEvent(QEvent* event) {
     m_mousePos = QPointF();
     m_hoveredPolygonIndex = -1;  // 清除悬停状态
     m_hoveredResultIndex = -1;   // 清除结果悬停状态
+    m_hoveredDraftingIndex = -1; // 清除 drafting 线段悬停状态
+    QToolTip::hideText();        // 隐藏 tooltip
     update();
     QWidget::leaveEvent(event);
 }
@@ -827,6 +873,149 @@ void Sketch2DView::paintEvent(QPaintEvent* event) {
     painter.drawLine(0, worldBounds.top(), 0, worldBounds.bottom());
     painter.drawLine(worldBounds.left(), 0, worldBounds.right(), 0);
     painter.restore();
+
+    // === Drafting Debug Visualization ===
+    if (m_showDraftingDebug && !m_draftingEdges.empty()) {
+        painter.save();
+        qreal penWidth = 2.5 / m_scale;
+        QFont font;
+        font.setPixelSize(12);
+        painter.setFont(font);
+
+        for (size_t idx = 0; idx < m_draftingEdges.size(); ++idx) {
+            const auto& info = m_draftingEdges[idx];
+
+            bool isSelected = (static_cast<int>(idx) == m_highlightedDraftingIndex);
+            bool isHovered = (static_cast<int>(idx) == m_hoveredDraftingIndex);
+
+            // end=true 边是最终结果边，正常渲染在屏幕上
+            // discarded=true 边（被分割/融合的中间边）默认不显示，仅在选中或悬停时才渲染
+            if (info.discarded) {
+                if (!isSelected && !isHovered) continue;
+            }
+
+            const auto& arc = info.edge;
+            // Get start/end points in world space
+            QPointF p1(arc.Point0().x, arc.Point0().y);
+            QPointF p2(arc.Point1().x, arc.Point1().y);
+            qreal bulge = arc.Bulge();
+
+            // Color: polygonSetB = blue, polygonSetA = red
+            QColor edgeColor = info.isPolygonSetB ? QColor(80, 150, 255) : QColor(255, 100, 100);
+            if (info.reversed) {
+                edgeColor = edgeColor.darker(130);
+            }
+
+            // 悬停发光（青色外轮廓）
+            if (isHovered && !isSelected) {
+                QPen glowPen(QColor(0, 255, 255, 60), penWidth * 4);
+                painter.setPen(glowPen);
+                painter.setBrush(Qt::NoBrush);
+                if (qAbs(bulge) > 1e-6) {
+                    ArcSegment localArc = arcSegmentFromBulge(p1, p2, bulge);
+                    const QRectF rect(localArc.center.x() - localArc.radius,
+                        localArc.center.y() - localArc.radius,
+                        localArc.radius * 2.0, localArc.radius * 2.0);
+                    QPainterPath edgePath;
+                    edgePath.moveTo(p1);
+                    edgePath.arcTo(rect, localArc.startAngleDeg, localArc.spanAngleDeg);
+                    painter.drawPath(edgePath);
+                } else {
+                    painter.drawLine(p1, p2);
+                }
+                edgeColor = edgeColor.lighter(140);
+            }
+
+            // 选中发光（金黄色外轮廓）
+            if (isSelected) {
+                // 高亮：先画发光外轮廓，再画实线
+                QPen glowPen(QColor(255, 255, 0, 80), penWidth * 4);
+                painter.setPen(glowPen);
+                painter.setBrush(Qt::NoBrush);
+                if (qAbs(bulge) > 1e-6) {
+                    ArcSegment localArc = arcSegmentFromBulge(p1, p2, bulge);
+                    const QRectF rect(localArc.center.x() - localArc.radius,
+                        localArc.center.y() - localArc.radius,
+                        localArc.radius * 2.0, localArc.radius * 2.0);
+                    QPainterPath edgePath;
+                    edgePath.moveTo(p1);
+                    edgePath.arcTo(rect, localArc.startAngleDeg, localArc.spanAngleDeg);
+                    painter.drawPath(edgePath);
+                } else {
+                    painter.drawLine(p1, p2);
+                }
+                edgeColor = QColor(255, 255, 0); // 金黄色高亮
+            }
+
+            QPen pen(edgeColor, (isSelected || isHovered) ? penWidth * 2.5 : penWidth);
+            painter.setPen(pen);
+            painter.setBrush(Qt::NoBrush);
+
+            // Pre-compute arc geometry (also used later for arrow)
+            ArcSegment localArc;
+            if (qAbs(bulge) > 1e-6) {
+                localArc = arcSegmentFromBulge(p1, p2, bulge);
+                const QRectF rect(localArc.center.x() - localArc.radius,
+                    localArc.center.y() - localArc.radius,
+                    localArc.radius * 2.0,
+                    localArc.radius * 2.0);
+                QPainterPath edgePath;
+                edgePath.moveTo(p1);
+                edgePath.arcTo(rect, localArc.startAngleDeg, localArc.spanAngleDeg);
+                painter.drawPath(edgePath);
+            } else {
+                painter.drawLine(p1, p2);
+            }
+
+            // Draw direction arrow — only on highlighted/selected segments
+            if (isSelected || isHovered) {
+                QPointF mid;
+                QPointF dir;
+                qreal arrowLen = 10.0 / m_scale;
+
+                if (qAbs(bulge) > 1e-6) {
+                    // Arc: use arcPointFromBulge for correct midpoint (vector-based, no angles)
+                    mid = arcPointFromBulge(p1, p2, bulge);
+
+                    // Tangent direction from radial vector, rotated 90°
+                    QPointF radial = mid - localArc.center;
+                    // bulge>0 (CCW) → tangent = CCW rotation of radial = (-ry, rx)
+                    // bulge<0 (CW)  → tangent = CW rotation of radial  = (ry, -rx)
+                    if (bulge >= 0.0) {
+                        dir = QPointF(-radial.y(), radial.x());
+                    } else {
+                        dir = QPointF(radial.y(), -radial.x());
+                    }
+                } else {
+                    // Straight line
+                    mid = (p1 + p2) / 2.0;
+                    dir = (p2 - p1);
+                }
+
+                // Reverse direction if segment is reversed
+                if (info.reversed) {
+                    dir = -dir;
+                }
+
+                qreal len = qSqrt(dir.x() * dir.x() + dir.y() * dir.y());
+                if (len > 0.001) {
+                    dir /= len;
+                    QPointF arrowTip = mid + dir * arrowLen;
+                    QPointF perp(-dir.y(), dir.x());
+                    QPen arrowPen(isSelected ? edgeColor : edgeColor.lighter(130),
+                        penWidth * 0.8);
+                    painter.setPen(arrowPen);
+                    painter.drawLine(mid, arrowTip);
+                    painter.drawLine(arrowTip, arrowTip - dir * (6.0 / m_scale) + perp * (4.0 / m_scale));
+                    painter.drawLine(arrowTip, arrowTip - dir * (6.0 / m_scale) - perp * (4.0 / m_scale));
+                }
+            }
+
+        }
+
+        painter.restore();
+        return; // Skip normal rendering when in debug mode
+    }
 
     // Draw polylines
     painter.save();
@@ -1462,7 +1651,7 @@ void Sketch2DView::wheelEvent(QWheelEvent* event) {
 
     const qreal oldScale = m_scale;
     m_scale *= zoomFactor;
-    m_scale = qBound(0.1, m_scale, 10.0);
+    m_scale = qBound(0.01, m_scale, 100.0);
 
     const QPointF screenCenter(width() / 2.0, height() / 2.0);
     const QPointF mousePos = event->position();
@@ -3146,6 +3335,119 @@ void Sketch2DView::debugExportPolygons(const QString& filename, const QSet<int>&
         qWarning() << "No polygons to export";
     }
 }
+
+void Sketch2DView::setDebugDrafting(const std::vector<DraftingEdgeInfo>& edges) {
+    m_draftingEdges = edges;
+    m_showDraftingDebug = true;
+    m_hoveredDraftingIndex = -1;
+    m_selectedDraftingIndex = -1;
+    setMouseTracking(true);
+    update();
+}
+
+void Sketch2DView::clearDraftingDebug() {
+    m_draftingEdges.clear();
+    m_showDraftingDebug = false;
+    m_hoveredDraftingIndex = -1;
+    m_selectedDraftingIndex = -1;
+    setMouseTracking(false);
+    update();
+}
+
+void Sketch2DView::setHighlightedDraftingSegment(int index) {
+    m_highlightedDraftingIndex = index;
+    if (m_showDraftingDebug) update();
+}
+
+void Sketch2DView::clearHighlightedDraftingSegment() {
+    m_highlightedDraftingIndex = -1;
+    if (m_showDraftingDebug) update();
+}
+
+bool Sketch2DView::isAngleOnArcSegment(qreal angle, qreal startAngle, qreal spanAngle) {
+    // Normalize angles to [0, 360)
+    auto norm = [](qreal a) {
+        while (a < 0.0) a += 360.0;
+        while (a >= 360.0) a -= 360.0;
+        return a;
+    };
+
+    qreal start = norm(startAngle);
+    qreal ang = norm(angle);
+
+    // Full circle: always on arc
+    if (qAbs(spanAngle) >= 359.5) return true;
+
+    if (spanAngle >= 0.0) {
+        qreal end = norm(start + spanAngle);
+        if (start <= end) return (ang >= start && ang <= end);
+        return (ang >= start || ang <= end);
+    } else {
+        qreal end = norm(start + spanAngle);
+        if (end <= start) return (ang <= start && ang >= end);
+        return (ang <= start || ang >= end);
+    }
+}
+
+int Sketch2DView::findNearestDraftingSegmentIndex(const QPointF& worldPos) const {
+    if (!m_showDraftingDebug) return -1;
+
+    double minDist = (std::numeric_limits<double>::max)();
+    int nearestIdx = -1;
+    double threshold = 10.0 / m_scale;  // 世界坐标下的触碰容差
+
+    for (size_t i = 0; i < m_draftingEdges.size(); ++i) {
+        const auto& info = m_draftingEdges[i];
+        if (!info.end) continue;
+
+        const auto& arc = info.edge;
+        QPointF p1(arc.Point0().x, arc.Point0().y);
+        QPointF p2(arc.Point1().x, arc.Point1().y);
+        double bulge = arc.Bulge();
+
+        double dist;
+        if (qAbs(bulge) > 1e-6) {
+            // 弧线：点到圆弧的距离 + 角度范围检查
+            ArcSegment localArc = arcSegmentFromBulge(p1, p2, bulge);
+            double dx = worldPos.x() - localArc.center.x();
+            double dy = worldPos.y() - localArc.center.y();
+            double circleDist = qAbs(qSqrt(dx * dx + dy * dy) - localArc.radius);
+
+            // 角度范围检查：鼠标角度必须在弧段的扫角范围内
+            qreal mouseAngle = angleDegAt(localArc.center, worldPos);
+            if (!isAngleOnArcSegment(mouseAngle, localArc.startAngleDeg, localArc.spanAngleDeg)) {
+                // 鼠标不在弧段的角度范围内，增大距离使其不太可能被选中
+                dist = circleDist + 1000.0;
+            } else {
+                dist = circleDist;
+            }
+        } else {
+            // 直线段：点到线段的垂直距离
+            QPointF v = p2 - p1;
+            double lenSq = v.x() * v.x() + v.y() * v.y();
+            if (lenSq < 1e-12) {
+                QPointF d = worldPos - p1;
+                dist = qSqrt(d.x() * d.x() + d.y() * d.y());
+            } else {
+                double t = qBound(0.0, QPointF::dotProduct(worldPos - p1, v) / lenSq, 1.0);
+                QPointF proj = p1 + t * v;
+                QPointF d = worldPos - proj;
+                dist = qSqrt(d.x() * d.x() + d.y() * d.y());
+            }
+        }
+
+        if (dist < minDist && dist < threshold) {
+            minDist = dist;
+            nearestIdx = static_cast<int>(i);
+        }
+    }
+
+    return nearestIdx;
+}
+
+
+
+
 
 
 

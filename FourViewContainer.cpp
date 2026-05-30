@@ -31,6 +31,7 @@ FourViewContainer::FourViewContainer(QWidget* parent)
     setupBooleanComboBox();
     setupFillTypeComboBoxes();
     setupConnectTypeComboBoxes();
+    setupPrecisionControl();
 }
 
 FourViewContainer::~FourViewContainer() = default;
@@ -54,10 +55,17 @@ void FourViewContainer::setupViews() {
     connect(m_mainView, &Sketch2DView::polylineRemoved, this, &FourViewContainer::synchronizeViews);
     connect(m_mainView, &Sketch2DView::polygonRemoved, this, &FourViewContainer::synchronizeViews);
     connect(m_mainView, &Sketch2DView::selectionChanged, this, &FourViewContainer::synchronizeViews);
-    connect(m_mainView, &Sketch2DView::polylineModified, this, &FourViewContainer::synchronizeViews);
-    connect(m_mainView, &Sketch2DView::polygonModified, this, &FourViewContainer::synchronizeViews);
+    // 拖拽修改信号使用防抖，避免每次鼠标移动都触发完整重算
+    connect(m_mainView, &Sketch2DView::polylineModified, this, &FourViewContainer::synchronizeViewsDeferred);
+    connect(m_mainView, &Sketch2DView::polygonModified, this, &FourViewContainer::synchronizeViewsDeferred);
     connect(m_mainView, &Sketch2DView::polygonRoleChanged, this, &FourViewContainer::synchronizeViews);
     connect(m_mainView, &Sketch2DView::polygonColorChanged, this, &FourViewContainer::synchronizeViews);
+
+    // 防抖计时器：200ms 内多次调用只执行最后一次
+    m_debounceTimer = new QTimer(this);
+    m_debounceTimer->setSingleShot(true);
+    m_debounceTimer->setInterval(200);
+    connect(m_debounceTimer, &QTimer::timeout, this, &FourViewContainer::synchronizeViews);
 }
 
 void FourViewContainer::setupLayout() {
@@ -66,10 +74,10 @@ void FourViewContainer::setupLayout() {
     m_layout->setSpacing(2);
 
     // Create frames for each view with borders
-    auto* frameMain = new QFrame(this);
-    frameMain->setFrameShape(QFrame::StyledPanel);
-    frameMain->setFrameShadow(QFrame::Sunken);
-    auto* layoutMain = new QVBoxLayout(frameMain);
+    m_frameMain = new QFrame(this);
+    m_frameMain->setFrameShape(QFrame::StyledPanel);
+    m_frameMain->setFrameShadow(QFrame::Sunken);
+    auto* layoutMain = new QVBoxLayout(m_frameMain);
     layoutMain->setContentsMargins(0, 0, 0, 0);
     layoutMain->addWidget(m_mainView);
 
@@ -95,7 +103,7 @@ void FourViewContainer::setupLayout() {
     layoutBottomRight->addWidget(m_bottomRightView);
 
     // Arrange in 2x2 grid
-    m_layout->addWidget(frameMain, 0, 0);
+    m_layout->addWidget(m_frameMain, 0, 0);
     m_layout->addWidget(m_frameTopRight, 0, 1);
     m_layout->addWidget(m_frameBottomLeft, 1, 0);
     m_layout->addWidget(m_frameBottomRight, 1, 1);
@@ -398,7 +406,41 @@ void FourViewContainer::setupConnectTypeComboBoxes() {
         });
 }
 
+void FourViewContainer::setupPrecisionControl() {
+    // Create precision spin box for adjusting calculation precision
+    m_precisionSpinBox = new QSpinBox(m_frameMain);
+    m_precisionSpinBox->setRange(1, 20);  // 1e-1 到 1e-20
+    m_precisionSpinBox->setValue(static_cast<int>(tailor_visualization::DynamicPrecisionCore::DEFAULT_PRECISION));
+    m_precisionSpinBox->setSuffix("");  // 不显示后缀，精度值直接显示
+    m_precisionSpinBox->setPrefix("精度: ");  // 显示前缀
+    m_precisionSpinBox->move(5, 5);
+    m_precisionSpinBox->raise();
+    m_precisionSpinBox->setMinimumWidth(100);
+    m_precisionSpinBox->setToolTip("设置布尔运算精度\n数值越大精度越高（1e-N）");
+
+    // Connect to signal - update precision and refresh all views
+    connect(m_precisionSpinBox, QOverload<int>::of(&QSpinBox::valueChanged),
+        this, [this](int precision) {
+            // 设置精度
+            tailor_visualization::BooleanOperations::SetPrecision(static_cast<size_t>(precision));
+            
+            // 刷新所有视图
+            synchronizeViews();
+            
+            // 强制刷新主视图
+            m_mainView->update();
+        });
+}
+
 void FourViewContainer::synchronizeViews() {
+    // If in debug mode, just update drafting data and notify
+    if (m_debugMode) {
+        updateDebugDrafting();
+        refreshDraftingSegments();
+        emit dataChanged();
+        return;
+    }
+
     // Copy all data from main view to secondary views
     m_topRightView->setPolylines(m_mainView->polylines());
     m_topRightView->setPolygons(m_mainView->polygons());
@@ -450,6 +492,12 @@ void FourViewContainer::synchronizeViews() {
     m_topRightView->update();
     m_bottomLeftView->update();
     m_bottomRightView->update();
+
+    // 同时刷新 Drafting 线段缓存（用于输出模型树）
+    refreshDraftingSegments();
+
+    // 通知外部（main.cpp）更新模型树
+    emit dataChanged();
 }
 
 const tailor_visualization::IFillType* FourViewContainer::getClipFillType() const {
@@ -514,6 +562,263 @@ const tailor_visualization::IConnectType<ConnectTypeDrafting>* FourViewContainer
         return m_connectTypeOuterFirst.get();
     }
 }
+
+void FourViewContainer::setDebugMode(bool debugMode) {
+    if (m_debugMode == debugMode) return;
+    m_debugMode = debugMode;
+
+    if (m_debugToggleButton) {
+        m_debugToggleButton->setText(debugMode ? QString::fromUtf8("退出调试") : QString::fromUtf8("调试Drafting"));
+        m_debugToggleButton->setStyleSheet(debugMode ? "background-color: #ff6600; color: white;" : "");
+    }
+
+    if (debugMode) {
+        m_frameTopRight->hide();
+        m_frameBottomLeft->hide();
+        m_frameBottomRight->hide();
+
+        m_layout->removeWidget(m_frameMain);
+        m_layout->addWidget(m_frameMain, 0, 0, 2, 2);
+
+        updateDebugDrafting();
+    } else {
+        m_layout->removeWidget(m_frameMain);
+        m_layout->addWidget(m_frameMain, 0, 0);
+
+        m_frameTopRight->show();
+        m_frameBottomLeft->show();
+        m_frameBottomRight->show();
+
+        m_mainView->clearDraftingDebug();
+        synchronizeViews();
+    }
+}
+
+void FourViewContainer::toggleDebugMode() {
+    setDebugMode(!m_debugMode);
+}
+
+void FourViewContainer::updateDebugDrafting() {
+    using namespace tailor_visualization;
+
+    BooleanOperations booleanOp;
+
+    auto convertPolygon = [](const Sketch2DView::Polygon& poly) -> std::vector<Arc> {
+        std::vector<Arc> arcs;
+        for (int j = 0; j < poly.vertices.size(); ++j) {
+            int next = (j + 1) % poly.vertices.size();
+            const auto& v1 = poly.vertices[j];
+            const auto& v2 = poly.vertices[next];
+            Arc arc(ArcPoint(v1.point.x(), v1.point.y()),
+                ArcPoint(v2.point.x(), v2.point.y()),
+                v1.bulge, QRgba64());
+            arcs.push_back(arc);
+        }
+        return arcs;
+    };
+
+    auto convertPolyline = [](const Sketch2DView::Polyline& polyline) -> std::vector<Arc> {
+        std::vector<Arc> arcs;
+        int n = polyline.vertices.size();
+        if (n < 2) return arcs;
+        for (int j = 0; j < n - 1; ++j) {
+            const auto& v1 = polyline.vertices[j];
+            const auto& v2 = polyline.vertices[j + 1];
+            Arc arc(ArcPoint(v1.point.x(), v1.point.y()),
+                ArcPoint(v2.point.x(), v2.point.y()),
+                v1.bulge, QRgba64());
+            arcs.push_back(arc);
+        }
+        return arcs;
+    };
+
+    for (int index : m_mainView->clipPolygons()) {
+        const auto& polygons = m_mainView->polygons();
+        if (index >= 0 && index < polygons.size()) {
+            auto arcs = convertPolygon(polygons[index]);
+            if (!arcs.empty()) booleanOp.AddClipPolygon(arcs);
+        }
+    }
+
+    for (int index : m_mainView->clipPolylines()) {
+        const auto& polylines = m_mainView->polylines();
+        if (index >= 0 && index < polylines.size()) {
+            auto arcs = convertPolyline(polylines[index]);
+            if (!arcs.empty()) booleanOp.AddClipPolygon(arcs);
+        }
+    }
+
+    for (int index : m_mainView->subjectPolygons()) {
+        const auto& polygons = m_mainView->polygons();
+        if (index >= 0 && index < polygons.size()) {
+            auto arcs = convertPolygon(polygons[index]);
+            if (!arcs.empty()) booleanOp.AddSubjectPolygon(arcs);
+        }
+    }
+
+    for (int index : m_mainView->subjectPolylines()) {
+        const auto& polylines = m_mainView->polylines();
+        if (index >= 0 && index < polylines.size()) {
+            auto arcs = convertPolyline(polylines[index]);
+            if (!arcs.empty()) booleanOp.AddSubjectPolygon(arcs);
+        }
+    }
+
+    auto drafting = booleanOp.CreateDrafting();
+
+    std::vector<DraftingEdgeInfo> debugEdges;
+    debugEdges.reserve(drafting.edgeEvent.size());
+    for (const auto& ee : drafting.edgeEvent) {
+        DraftingEdgeInfo info{
+            ee.edge,
+            ee.isPolygonSetB,
+            ee.reversed,
+            ee.windB,
+            ee.windA,
+            ee.end,
+            ee.discarded
+        };
+        debugEdges.push_back(info);
+    }
+
+    m_mainView->setDebugDrafting(debugEdges);
+
+    qDebug() << "Debug drafting:" << debugEdges.size() << "total edges,"
+        << std::count_if(debugEdges.begin(), debugEdges.end(),
+            [](const DraftingEdgeInfo& e) { return e.end; })
+        << "end edges,"
+        << std::count_if(debugEdges.begin(), debugEdges.end(),
+            [](const DraftingEdgeInfo& e) { return e.discarded; })
+        << "discarded";
+
+    // Also refresh drafting segments for output tree
+    refreshDraftingSegments();
+}
+
+void FourViewContainer::refreshDraftingSegments() {
+    using namespace tailor_visualization;
+    using PUtils = tailor::PointUtils<ArcPoint>;
+
+    m_draftingSegments.clear();
+
+    BooleanOperations booleanOp;
+
+    auto convertPolygon = [](const Sketch2DView::Polygon& poly) -> std::vector<Arc> {
+        std::vector<Arc> arcs;
+        for (int j = 0; j < poly.vertices.size(); ++j) {
+            int next = (j + 1) % poly.vertices.size();
+            const auto& v1 = poly.vertices[j];
+            const auto& v2 = poly.vertices[next];
+            Arc arc(ArcPoint(v1.point.x(), v1.point.y()),
+                ArcPoint(v2.point.x(), v2.point.y()),
+                v1.bulge, QRgba64());
+            arcs.push_back(arc);
+        }
+        return arcs;
+    };
+
+    auto convertPolyline = [](const Sketch2DView::Polyline& polyline) -> std::vector<Arc> {
+        std::vector<Arc> arcs;
+        int n = polyline.vertices.size();
+        if (n < 2) return arcs;
+        for (int j = 0; j < n - 1; ++j) {
+            const auto& v1 = polyline.vertices[j];
+            const auto& v2 = polyline.vertices[j + 1];
+            Arc arc(ArcPoint(v1.point.x(), v1.point.y()),
+                ArcPoint(v2.point.x(), v2.point.y()),
+                v1.bulge, QRgba64());
+            arcs.push_back(arc);
+        }
+        return arcs;
+    };
+
+    for (int index : m_mainView->clipPolygons()) {
+        const auto& polygons = m_mainView->polygons();
+        if (index >= 0 && index < polygons.size()) {
+            auto arcs = convertPolygon(polygons[index]);
+            if (!arcs.empty()) booleanOp.AddClipPolygon(arcs);
+        }
+    }
+
+    for (int index : m_mainView->clipPolylines()) {
+        const auto& polylines = m_mainView->polylines();
+        if (index >= 0 && index < polylines.size()) {
+            auto arcs = convertPolyline(polylines[index]);
+            if (!arcs.empty()) booleanOp.AddClipPolygon(arcs);
+        }
+    }
+
+    for (int index : m_mainView->subjectPolygons()) {
+        const auto& polygons = m_mainView->polygons();
+        if (index >= 0 && index < polygons.size()) {
+            auto arcs = convertPolygon(polygons[index]);
+            if (!arcs.empty()) booleanOp.AddSubjectPolygon(arcs);
+        }
+    }
+
+    for (int index : m_mainView->subjectPolylines()) {
+        const auto& polylines = m_mainView->polylines();
+        if (index >= 0 && index < polylines.size()) {
+            auto arcs = convertPolyline(polylines[index]);
+            if (!arcs.empty()) booleanOp.AddSubjectPolygon(arcs);
+        }
+    }
+
+    auto drafting = booleanOp.CreateDrafting();
+
+    PUtils pUtils;
+    for (int i = 0; i < (int)drafting.edgeEvent.size(); ++i) {
+        const auto& ee = drafting.edgeEvent[i];
+        // 包含所有边（end和非end），end边在模型树中以灰色标记
+        // discarded=true 的边标记为无效，但仍显示以便调试
+
+        DraftingSegmentInfo info;
+        info.index = i;
+        info.startX = pUtils.X(ee.edge.Point0());
+        info.startY = pUtils.Y(ee.edge.Point0());
+        info.endX = pUtils.X(ee.edge.Point1());
+        info.endY = pUtils.Y(ee.edge.Point1());
+        info.bulge = ee.edge.Bulge();
+        info.startPntGroup = ee.startPntGroup;
+        info.endPntGroup = ee.endPntGroup;
+        info.isPolygonSetB = ee.isPolygonSetB;
+        info.reversed = ee.reversed;
+        info.windB = ee.windB;         // 边上方区域的 windB
+        info.windA = ee.windA;         // 边上方区域的 windA
+        info.end = ee.end;
+        info.discarded = ee.discarded;
+
+        // 仿照 CalcGroupWind 算法计算该边的环绕贡献
+        // windA/windB 代表边上方区域的环绕数，contribution 代表该边自身的贡献量
+        if (ee.aggregatedEdges) {
+            info.isAggregated = true;
+            for (auto ae : ee.aggregatedEdges->sourceEdges) {
+                auto& aee = drafting.edgeEvent[ae];
+                if (aee.isPolygonSetB) {
+                    info.windBContribution += aee.reversed ? -1 : +1;
+                } else {
+                    info.windAContribution += aee.reversed ? -1 : +1;
+                }
+            }
+        } else {
+            info.isAggregated = false;
+            if (ee.isPolygonSetB) {
+                info.windBContribution = ee.reversed ? -1 : +1;
+            } else {
+                info.windAContribution = ee.reversed ? -1 : +1;
+            }
+        }
+
+        m_draftingSegments.push_back(info);
+    }
+}
+
+// 防抖版本的同步：拖拽修改时使用，避免每次鼠标移动都触发完整重算
+void FourViewContainer::synchronizeViewsDeferred() {
+    m_debounceTimer->start(); // 每次调用都重启计时器，200ms 内只执行最后一次
+}
+
+
 
 
 

@@ -12,12 +12,70 @@
 
 namespace tailor_visualization {
 
+    /**
+     * @brief 动态精度核心类
+     * 
+     * 与 tailor::PrecisionCore 有相同的接口，但精度值可以在运行时动态修改。
+     * 用于替代 tailor::PrecisionCore<10> 以支持界面调整精度。
+     * 
+     * 精度值通过 SetPrecision() 函数设置，默认精度为 10（对应 1e-10）
+     */
+    struct DynamicPrecisionCore {
+        // 计算 epsilon 值的辅助函数
+        static double Epsilon(size_t preci) {
+            double result = 1.0;
+            while (preci) {
+                result /= 10.0;
+                preci--;
+            }
+            return result;
+        }
+
+        // 可动态修改的静态成员变量（在 cpp 文件中初始化）
+        static double VALUE_EPSILON;
+        static double POINT_EPSILON;
+        static double ANGLE_EPSILON;
+
+        // 默认精度值
+        static constexpr size_t DEFAULT_PRECISION = 10;
+
+        /**
+         * @brief 设置精度
+         * @param precision 精度位数（例如 10 表示 1e-10）
+         */
+        static void SetPrecision(size_t precision) {
+            VALUE_EPSILON = Epsilon(precision);
+            POINT_EPSILON = Epsilon(precision);
+            ANGLE_EPSILON = Epsilon(precision);
+        }
+
+        /**
+         * @brief 获取当前精度
+         * @return 精度位数
+         */
+        static size_t GetPrecision() {
+            // 通过反算 VALUE_EPSILON 来获取精度
+            double eps = VALUE_EPSILON;
+            size_t preci = 0;
+            while (preci < 20 && eps < 0.1) { // 最多支持 20 位精度
+                eps *= 10.0;
+                if (eps >= 0.0999 && eps <= 0.1001) break;
+                preci++;
+            }
+            return preci;
+        }
+    };
+
     // 类型别名定义 
     using ArcPoint = tailor::Point<double>;
     using Arc = tailor::ArcSegment<ArcPoint, double, QRgba64>;
     using ArcUtils = tailor::ArcSegmentUtils<Arc>;
 
-    using ArcTailor = tailor::Tailor<Arc, tailor::ArcAnalysis<Arc, tailor::ArcSegmentAnalyserCore<Arc, tailor::PrecisionCore<10>>>>;
+    // 使用动态精度核心替代静态的 tailor::PrecisionCore<10>
+    // 拆分为多步以避免模板嵌套过深导致的语法问题
+    using ArcAnalyserCore = tailor::ArcSegmentAnalyserCore<Arc, DynamicPrecisionCore>;
+    using ArcAnalysisWithCore = tailor::ArcAnalysis<Arc, ArcAnalyserCore>;
+    using ArcTailor = tailor::Tailor<Arc, ArcAnalysisWithCore>;
     // Note: Drafting type is defined in FourViewContainer.h for caching purposes
     // using Drafting = typename ArcTailor::PatternDrafting;
 
@@ -281,12 +339,31 @@ namespace tailor_visualization {
      * 提供路径多边形的布尔运算功能，支持并集、交集、差集和异或操作
      */
     class BooleanOperations {
-        using AA = tailor::ArcAnalysis<Arc, tailor::ArcSegmentAnalyserCore<Arc, tailor::PrecisionCore<10>>>;
+        // 使用动态精度核心
+        using AA = tailor::ArcAnalysis<Arc, tailor::ArcSegmentAnalyserCore<Arc, DynamicPrecisionCore>>;
     public:
         /**
          * @brief 构造函数
          */
         BooleanOperations();
+
+        /**
+         * @brief 设置计算精度
+         * @param precision 精度位数（例如 10 表示 1e-10，数值越大精度越高）
+         * @note 精度会影响算法的容差值。较低的精度（如 5）会使算法更"宽松"，
+         *       较高的精度（如 15）会使算法更"严格"。默认为 10。
+         */
+        static void SetPrecision(size_t precision) {
+            DynamicPrecisionCore::SetPrecision(precision);
+        }
+
+        /**
+         * @brief 获取当前计算精度
+         * @return 当前精度位数
+         */
+        static size_t GetPrecision() {
+            return DynamicPrecisionCore::GetPrecision();
+        }
 
         /**
          * @brief 从弧段数组添加多边形
@@ -339,8 +416,8 @@ namespace tailor_visualization {
         /**
          * @brief 执行布尔运算
          * @param operation 布尔操作类型
-         * @param clipFillType Clip集合的填充规则指针
-         * @param subjectFillType Subject集合的填充规则指针
+         * @param clipFillType polygonSetB 集合的填充规则指针
+         * @param subjectFillType polygonSetA 集合的填充规则指针
          * @return 结果多边形集合
          */
         std::vector<std::vector<Arc>> Execute(
@@ -359,8 +436,8 @@ namespace tailor_visualization {
         /**
          * @brief 执行布尔运算，支持 ConnectType
          * @param operation 布尔操作类型
-         * @param clipFillType Clip集合的填充规则指针
-         * @param subjectFillType Subject集合的填充规则指针
+         * @param clipFillType polygonSetB 集合的填充规则指针
+         * @param subjectFillType polygonSetA 集合的填充规则指针
          * @param connectType 连接类型指针（可选）
          * @return 结果多边形集合
          */
@@ -373,8 +450,8 @@ namespace tailor_visualization {
         /**
          * @brief 执行布尔运算，获取带内环信息的结果
          * @param operation 布尔操作类型
-         * @param clipFillType Clip集合的填充规则指针
-         * @param subjectFillType Subject集合的填充规则指针
+         * @param clipFillType polygonSetB 集合的填充规则指针
+         * @param subjectFillType polygonSetA 集合的填充规则指针
          * @param connectType 连接类型指针（可选）
          * @return 带内环标记的结果多边形集合
          */
@@ -385,54 +462,54 @@ namespace tailor_visualization {
             const IConnectType<tailor::Tailor<Arc, AA>::PatternDrafting>* connectType = nullptr);
 
         /**
-         * @brief 执行 OnlyClipPattern，获取 Clip 多边形（非自交）
+         * @brief 执行 PolygonSetBPattern，获取 polygonSetB 多边形（非自交）
          * @param fillType 填充类型指针，支持指定环绕数
-         * @return Clip 多边形集合
+         * @return polygonSetB 多边形集合
          */
         std::vector<std::vector<Arc>> ExecuteOnlyClipPattern(const IFillType* fillType = nullptr);
 
         /**
-         * @brief 执行 OnlyClipPattern，获取 Clip 多边形（非自交），支持 ConnectType
+         * @brief 执行 PolygonSetBPattern，获取 polygonSetB 多边形（非自交），支持 ConnectType
          * @param fillType 填充类型指针，支持指定环绕数
          * @param connectType 连接类型指针
-         * @return Clip 多边形集合
+         * @return polygonSetB 多边形集合
          */
         std::vector<std::vector<Arc>> ExecuteOnlyClipPattern(
             const IFillType* fillType,
             const IConnectType<tailor::Tailor<Arc, AA>::PatternDrafting>* connectType);
 
         /**
-         * @brief 执行 OnlyClipPattern，获取带内环信息的 Clip 多边形
+         * @brief 执行 PolygonSetBPattern，获取带内环信息的 polygonSetB 多边形
          * @param fillType 填充类型指针，支持指定环绕数
          * @param connectType 连接类型指针
-         * @return 带内环标记的 Clip 多边形集合
+         * @return 带内环标记的 polygonSetB 多边形集合
          */
         std::vector<PolygonWithHoleInfo> ExecuteOnlyClipPatternWithHoles(
             const IFillType* fillType = nullptr,
             const IConnectType<tailor::Tailor<Arc, AA>::PatternDrafting>* connectType = nullptr);
 
         /**
-         * @brief 执行 OnlySubjectPattern，获取 Subject 多边形（非自交）
+         * @brief 执行 PolygonSetAPattern，获取 polygonSetA 多边形（非自交）
          * @param fillType 填充类型指针，支持指定环绕数
-         * @return Subject 多边形集合
+         * @return polygonSetA 多边形集合
          */
         std::vector<std::vector<Arc>> ExecuteOnlySubjectPattern(const IFillType* fillType = nullptr);
 
         /**
-         * @brief 执行 OnlySubjectPattern，获取 Subject 多边形（非自交），支持 ConnectType
+         * @brief 执行 PolygonSetAPattern，获取 polygonSetA 多边形（非自交），支持 ConnectType
          * @param fillType 填充类型指针，支持指定环绕数
          * @param connectType 连接类型指针
-         * @return Subject 多边形集合
+         * @return polygonSetA 多边形集合
          */
         std::vector<std::vector<Arc>> ExecuteOnlySubjectPattern(
             const IFillType* fillType,
             const IConnectType<tailor::Tailor<Arc, AA>::PatternDrafting>* connectType);
 
         /**
-         * @brief 执行 OnlySubjectPattern，获取带内环信息的 Subject 多边形
+         * @brief 执行 PolygonSetAPattern，获取带内环信息的 polygonSetA 多边形
          * @param fillType 填充类型指针，支持指定环绕数
          * @param connectType 连接类型指针
-         * @return 带内环标记的 Subject 多边形集合
+         * @return 带内环标记的 polygonSetA 多边形集合
          */
         std::vector<PolygonWithHoleInfo> ExecuteOnlySubjectPatternWithHoles(
             const IFillType* fillType = nullptr,
@@ -499,8 +576,8 @@ namespace tailor_visualization {
          * @brief 使用 drafting 和指定的填充规则执行布尔运算
          * @param drafting 裁剪结果
          * @param operation 布尔操作类型
-         * @param clipFillType Clip集合的填充规则指针
-         * @param subjectFillType Subject集合的填充规则指针
+         * @param clipFillType polygonSetB 集合的填充规则指针
+         * @param subjectFillType polygonSetA 集合的填充规则指针
          * @return 结果多边形集合
          */
         std::vector<std::vector<Arc>> ExecuteWithFillTypes(
@@ -513,8 +590,8 @@ namespace tailor_visualization {
          * @brief 使用 drafting 和指定的填充规则、连接方式执行布尔运算
          * @param drafting 裁剪结果
          * @param operation 布尔操作类型
-         * @param clipFillType Clip集合的填充规则指针
-         * @param subjectFillType Subject集合的填充规则指针
+         * @param clipFillType polygonSetB 集合的填充规则指针
+         * @param subjectFillType polygonSetA 集合的填充规则指针
          * @param connectType 连接方式指针
          * @return 结果多边形集合
          */
