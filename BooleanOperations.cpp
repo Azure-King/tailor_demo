@@ -59,16 +59,14 @@ namespace tailor_visualization {
         // 创建裁剪器
         ArcTailor tailor(arcAnalysis_);
 
-        // 添加所有Clip多边形（裁剪多边形）并分割为单调弧段
+        // 添加所有Clip多边形（裁剪多边形）
         for (const auto& clipPoly : clipPolygons_) {
-            auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(clipPoly.begin(), clipPoly.end());
         }
 
-        // 添加所有Subject多边形（被裁剪多边形）并分割为单调弧段
+        // 添加所有Subject多边形（被裁剪多边形）
         for (const auto& subjectPoly : subjectPolygons_) {
-            auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(subjectPoly.begin(), subjectPoly.end());
         }
 
         // 执行布尔运算
@@ -88,16 +86,14 @@ namespace tailor_visualization {
         // 创建裁剪器
         ArcTailor tailor(arcAnalysis_);
 
-        // 添加所有Clip多边形（裁剪多边形）并分割为单调弧段
+        // 添加所有Clip多边形（裁剪多边形）
         for (const auto& clipPoly : clipPolygons_) {
-            auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(clipPoly.begin(), clipPoly.end());
         }
 
-        // 添加所有Subject多边形（被裁剪多边形）并分割为单调弧段
+        // 添加所有Subject多边形（被裁剪多边形）
         for (const auto& subjectPoly : subjectPolygons_) {
-            auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(subjectPoly.begin(), subjectPoly.end());
         }
 
         // 执行裁剪
@@ -121,16 +117,14 @@ namespace tailor_visualization {
         // 创建裁剪器
         ArcTailor tailor(arcAnalysis_);
 
-        // 添加所有Clip多边形（裁剪多边形）并分割为单调弧段
+        // 添加所有Clip多边形（裁剪多边形）
         for (const auto& clipPoly : clipPolygons_) {
-            auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(clipPoly.begin(), clipPoly.end());
         }
 
-        // 添加所有Subject多边形（被裁剪多边形）并分割为单调弧段
+        // 添加所有Subject多边形（被裁剪多边形）
         for (const auto& subjectPoly : subjectPolygons_) {
-            auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(subjectPoly.begin(), subjectPoly.end());
         }
 
         // 执行裁剪
@@ -213,8 +207,7 @@ namespace tailor_visualization {
 
         // 添加 Clip 集合的多边形
         for (const auto& clipPoly : clipPolygons_) {
-            auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(clipPoly.begin(), clipPoly.end());
         }
 
         // 执行
@@ -286,8 +279,7 @@ namespace tailor_visualization {
 
         // 添加 Subject 集合的多边形
         for (const auto& subjectPoly : subjectPolygons_) {
-            auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(subjectPoly.begin(), subjectPoly.end());
         }
 
         // 执行
@@ -348,16 +340,14 @@ namespace tailor_visualization {
         // 创建裁剪器
         ArcTailor tailor(arcAnalysis_);
 
-        // 添加所有Clip多边形（需要分割为单调弧段）
+        // 添加所有Clip多边形
         for (const auto& clipPoly : clipPolygons_) {
-            auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(clipPoly.begin(), clipPoly.end());
         }
 
-        // 添加所有Subject多边形（需要分割为单调弧段）
+        // 添加所有Subject多边形
         for (const auto& subjectPoly : subjectPolygons_) {
-            auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(subjectPoly.begin(), subjectPoly.end());
         }
 
         // 执行并返回drafting
@@ -585,15 +575,6 @@ namespace tailor_visualization {
 
 
         return resultPolygons;
-    }
-
-    std::vector<Arc> BooleanOperations::SplitToMonotonic(const std::vector<Arc>& arcs) {
-        std::vector<Arc> result;
-        for (const auto& arc : arcs) {
-            auto splitArcs = arcAnalysis_.SplitToMonotonic2(arc);
-            result.insert(result.end(), splitArcs.begin(), splitArcs.end());
-        }
-        return result;
     }
 
     template<typename T>
@@ -1011,8 +992,7 @@ namespace tailor_visualization {
 
         // 添加 Clip 集合的多边形
         for (const auto& clipPoly : clipPolygons_) {
-            auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(clipPoly.begin(), clipPoly.end());
         }
 
         // 执行
@@ -1086,8 +1066,7 @@ namespace tailor_visualization {
 
         // 添加 Subject 集合的多边形
         for (const auto& subjectPoly : subjectPolygons_) {
-            auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(subjectPoly.begin(), subjectPoly.end());
         }
 
         // 执行
@@ -1157,16 +1136,14 @@ namespace tailor_visualization {
         // 创建裁剪器
         ArcTailor tailor(arcAnalysis_);
 
-        // 添加所有Clip多边形（裁剪多边形）并分割为单调弧段
+        // 添加所有Clip多边形（裁剪多边形）
         for (const auto& clipPoly : clipPolygons_) {
-            auto monotonicClip = SplitToMonotonic(clipPoly);
-            tailor.AddToPolygonSetB(monotonicClip.begin(), monotonicClip.end());
+            tailor.AddToPolygonSetB(clipPoly.begin(), clipPoly.end());
         }
 
-        // 添加所有Subject多边形（被裁剪多边形）并分割为单调弧段
+        // 添加所有Subject多边形（被裁剪多边形）
         for (const auto& subjectPoly : subjectPolygons_) {
-            auto monotonicSubject = SplitToMonotonic(subjectPoly);
-            tailor.AddToPolygonSetA(monotonicSubject.begin(), monotonicSubject.end());
+            tailor.AddToPolygonSetA(subjectPoly.begin(), subjectPoly.end());
         }
 
         // 执行裁剪

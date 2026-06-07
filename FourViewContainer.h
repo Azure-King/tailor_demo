@@ -166,6 +166,8 @@ private:
 
     // 防抖计时器，避免拖拽修改时高频刷新
     QTimer* m_debounceTimer = nullptr;
+    // 调试模式drafting更新专用防抖计时器（间隔更长，CreateDrafting计算量大）
+    QTimer* m_debugDraftingTimer = nullptr;
 
     // Current boolean operation type (default: Union = 0)
     int m_currentBooleanOperation = 0;

@@ -527,13 +527,6 @@ namespace tailor_visualization {
         void Clear();
 
         /**
-         * @brief 将弧段分割为单调弧段
-         * @param arcs 输入弧段
-         * @return 分割后的弧段
-         */
-        std::vector<Arc> SplitToMonotonic(const std::vector<Arc>& arcs);
-
-        /**
          * @brief 递归遍历多边形树
          * @param tree 多边形树
          * @param callback 处理多边形的回调

@@ -64,8 +64,18 @@ void FourViewContainer::setupViews() {
     // 防抖计时器：200ms 内多次调用只执行最后一次
     m_debounceTimer = new QTimer(this);
     m_debounceTimer->setSingleShot(true);
-    m_debounceTimer->setInterval(200);
+    m_debounceTimer->setInterval(1);
     connect(m_debounceTimer, &QTimer::timeout, this, &FourViewContainer::synchronizeViews);
+
+    // 调试drafting防抖：500ms，CreateDrafting计算量大，避免拖慢四视图
+    m_debugDraftingTimer = new QTimer(this);
+    m_debugDraftingTimer->setSingleShot(true);
+    m_debugDraftingTimer->setInterval(500);
+    connect(m_debugDraftingTimer, &QTimer::timeout, this, [this]() {
+        updateDebugDrafting();
+        refreshDraftingSegments();
+        emit dataChanged();
+    });
 }
 
 void FourViewContainer::setupLayout() {
@@ -435,9 +445,8 @@ void FourViewContainer::setupPrecisionControl() {
 void FourViewContainer::synchronizeViews() {
     // If in debug mode, just update drafting data and notify
     if (m_debugMode) {
-        updateDebugDrafting();
-        refreshDraftingSegments();
-        emit dataChanged();
+        // 调试模式下的drafting更新使用独立的长防抖，避免拖慢主视图交互
+        m_debugDraftingTimer->start();
         return;
     }
 
@@ -493,9 +502,7 @@ void FourViewContainer::synchronizeViews() {
     m_bottomLeftView->update();
     m_bottomRightView->update();
 
-    // 同时刷新 Drafting 线段缓存（用于输出模型树）
-    refreshDraftingSegments();
-
+    // 正常模式下跳过 drafting 线段树更新（仅在调试模式下需要，避免拖慢四视图）
     // 通知外部（main.cpp）更新模型树
     emit dataChanged();
 }
@@ -581,6 +588,8 @@ void FourViewContainer::setDebugMode(bool debugMode) {
         m_layout->addWidget(m_frameMain, 0, 0, 2, 2);
 
         updateDebugDrafting();
+        refreshDraftingSegments();
+        emit dataChanged();
     } else {
         m_layout->removeWidget(m_frameMain);
         m_layout->addWidget(m_frameMain, 0, 0);
@@ -690,9 +699,6 @@ void FourViewContainer::updateDebugDrafting() {
         << std::count_if(debugEdges.begin(), debugEdges.end(),
             [](const DraftingEdgeInfo& e) { return e.discarded; })
         << "discarded";
-
-    // Also refresh drafting segments for output tree
-    refreshDraftingSegments();
 }
 
 void FourViewContainer::refreshDraftingSegments() {

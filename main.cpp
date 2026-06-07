@@ -198,8 +198,10 @@ void updateAllResultsTrees(FourViewContainer* viewContainer,
     // 更新 Subject Pattern 结果
     updateSubjectPatternResultsTree(viewContainer->topRightView(), subjectPatternResultsItem);
 
-    // 更新 Drafting 线段
-    updateDraftingSegmentsTree(viewContainer, draftingSegmentsItem);
+    // 更新 Drafting 线段（仅在调试模式下才刷新，实时更新太慢会拖慢四视图）
+    if (viewContainer->isDebugMode()) {
+        updateDraftingSegmentsTree(viewContainer, draftingSegmentsItem);
+    }
 }
 
 int main(int argc, char* argv[]) {
