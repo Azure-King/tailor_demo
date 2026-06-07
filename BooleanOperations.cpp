@@ -9,9 +9,9 @@ namespace tailor_visualization {
     // ========== 动态精度核心实现 ==========
     
     // 静态成员变量定义
-    double DynamicPrecisionCore::VALUE_EPSILON = DynamicPrecisionCore::Epsilon(DynamicPrecisionCore::DEFAULT_PRECISION);
-    double DynamicPrecisionCore::POINT_EPSILON = DynamicPrecisionCore::Epsilon(DynamicPrecisionCore::DEFAULT_PRECISION);
-    double DynamicPrecisionCore::ANGLE_EPSILON = DynamicPrecisionCore::Epsilon(DynamicPrecisionCore::DEFAULT_PRECISION);
+    double DynamicPrecisionCore::s_valueEpsilon = DynamicPrecisionCore::Epsilon(DynamicPrecisionCore::DEFAULT_PRECISION);
+    double DynamicPrecisionCore::s_pointEpsilon = DynamicPrecisionCore::Epsilon(DynamicPrecisionCore::DEFAULT_PRECISION);
+    double DynamicPrecisionCore::s_angleEpsilon = DynamicPrecisionCore::Epsilon(DynamicPrecisionCore::DEFAULT_PRECISION);
 
     // ========== BooleanOperations 实现 ==========
 

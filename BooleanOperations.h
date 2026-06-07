@@ -31,10 +31,10 @@ namespace tailor_visualization {
             return result;
         }
 
-        // 可动态修改的静态成员变量（在 cpp 文件中初始化）
-        static double VALUE_EPSILON;
-        static double POINT_EPSILON;
-        static double ANGLE_EPSILON;
+        // 公共接口：三个静态 Epsilon 函数（满足 PrecisionConcept）
+        static double ValueEpsilon() { return s_valueEpsilon; }
+        static double PointEpsilon() { return s_pointEpsilon; }
+        static double AngleEpsilon() { return s_angleEpsilon; }
 
         // 默认精度值
         static constexpr size_t DEFAULT_PRECISION = 10;
@@ -44,9 +44,9 @@ namespace tailor_visualization {
          * @param precision 精度位数（例如 10 表示 1e-10）
          */
         static void SetPrecision(size_t precision) {
-            VALUE_EPSILON = Epsilon(precision);
-            POINT_EPSILON = Epsilon(precision);
-            ANGLE_EPSILON = Epsilon(precision);
+            s_valueEpsilon = Epsilon(precision);
+            s_pointEpsilon = Epsilon(precision);
+            s_angleEpsilon = Epsilon(precision);
         }
 
         /**
@@ -54,8 +54,8 @@ namespace tailor_visualization {
          * @return 精度位数
          */
         static size_t GetPrecision() {
-            // 通过反算 VALUE_EPSILON 来获取精度
-            double eps = VALUE_EPSILON;
+            // 通过反算 ValueEpsilon 来获取精度
+            double eps = s_valueEpsilon;
             size_t preci = 0;
             while (preci < 20 && eps < 0.1) { // 最多支持 20 位精度
                 eps *= 10.0;
@@ -64,6 +64,12 @@ namespace tailor_visualization {
             }
             return preci;
         }
+
+    private:
+        // 内部存储（在 cpp 文件中初始化）
+        static double s_valueEpsilon;
+        static double s_pointEpsilon;
+        static double s_angleEpsilon;
     };
 
     // 类型别名定义 
