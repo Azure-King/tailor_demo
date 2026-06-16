@@ -4,7 +4,7 @@
 #include <QTreeWidget>
 #include <QTreeWidgetItem>
 #include <QTextEdit>
-#include <QVBoxLayout>
+#include <QVBoxLayout> 
 
 #include <QAction>
 #include <QToolBar>

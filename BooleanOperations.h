@@ -157,6 +157,43 @@ namespace tailor_visualization {
     };
 
     /**
+     * @brief 环绕数大于 0 的 FillType (Positive fill type, 用于 Pattern)
+     *
+     * 判定逻辑：环绕数 wind > 0 时视为内部（Inside）
+     */
+    class PositiveFillType {
+    public:
+        tailor::BoundaryType operator()(const tailor::EdgeFillStatus& status) const {
+            auto x = static_cast<tailor::Int>(status.positive) - static_cast<tailor::Int>(status.negitive);
+
+            bool succ0 = status.wind > 0;
+            bool succ1 = (status.wind + x) > 0;
+
+            if (succ0 && succ1) {
+                return tailor::BoundaryType::Inside;
+            } else if (succ0) {
+                return tailor::BoundaryType::UpperBoundary;
+            } else if (succ1) {
+                return tailor::BoundaryType::LowerBoundary;
+            } else {
+                return tailor::BoundaryType::Outside;
+            }
+        }
+    };
+
+    /**
+     * @brief PositiveFillType 的具体实现 (运行时包装器)
+     */
+    class PositiveFillTypeWrapper : public IFillType {
+    public:
+        ~PositiveFillTypeWrapper() override = default;
+        tailor::BoundaryType operator()(const tailor::EdgeFillStatus& status) const override {
+            PositiveFillType filler;
+            return filler(status);
+        }
+    };
+
+    /**
      * @brief 指定环绕数的条件
      */
     template<int TargetWinding>
@@ -237,6 +274,7 @@ namespace tailor_visualization {
             tailor::NonZeroFillType,
             tailor::EvenOddFillType,
             tailor::IgnoreFillType,
+            PositiveFillType,
             SpecificWindingFillType<1>,
             SpecificWindingFillType<2>,
             SpecificWindingFillType<3>,
@@ -271,6 +309,8 @@ namespace tailor_visualization {
             return FillTypeVariant(tailor::EvenOddFillType{});
         } else if (dynamic_cast<const IgnoreFillTypeWrapper*>(fillType)) {
             return FillTypeVariant(tailor::IgnoreFillType{});
+        } else if (dynamic_cast<const PositiveFillTypeWrapper*>(fillType)) {
+            return FillTypeVariant(PositiveFillType{});
         } else if (const auto* specific = dynamic_cast<const SpecificWindingFillTypeWrapper*>(fillType)) {
             int winding = specific->getTargetWinding();
             switch (winding) {

@@ -21,6 +21,7 @@ FourViewContainer::FourViewContainer(QWidget* parent)
     m_nonZeroFillType = std::make_unique<tailor_visualization::NonZeroFillTypeWrapper>();
     m_evenOddFillType = std::make_unique<tailor_visualization::EvenOddFillTypeWrapper>();
     m_ignoreFillType = std::make_unique<tailor_visualization::IgnoreFillTypeWrapper>();
+    m_positiveFillType = std::make_unique<tailor_visualization::PositiveFillTypeWrapper>();
     m_specificWindingFillTypeTopRight = std::make_unique<tailor_visualization::SpecificWindingFillTypeWrapper>(m_topRightWinding);
     m_specificWindingFillTypeBottomLeft = std::make_unique<tailor_visualization::SpecificWindingFillTypeWrapper>(m_bottomLeftWinding);
     m_connectTypeOuterFirst = std::make_unique<tailor_visualization::ConnectTypeOuterFirstWrapper<ConnectTypeDrafting>>();
@@ -156,6 +157,7 @@ void FourViewContainer::setupFillTypeComboBoxes() {
     m_topRightFillTypeComboBox = new QComboBox(m_frameTopRight);
     m_topRightFillTypeComboBox->addItem("NonZero", static_cast<int>(PatternFillType::NonZero));
     m_topRightFillTypeComboBox->addItem("EvenOdd", static_cast<int>(PatternFillType::EvenOdd));
+    m_topRightFillTypeComboBox->addItem("Positive", static_cast<int>(PatternFillType::Positive));
     m_topRightFillTypeComboBox->addItem("Ignore", static_cast<int>(PatternFillType::Ignore));
     m_topRightFillTypeComboBox->addItem("Specific Winding", static_cast<int>(PatternFillType::SpecificWinding));
     m_topRightFillTypeComboBox->setCurrentIndex(0); // Default: NonZero
@@ -238,6 +240,7 @@ void FourViewContainer::setupFillTypeComboBoxes() {
     m_bottomLeftFillTypeComboBox = new QComboBox(m_frameBottomLeft);
     m_bottomLeftFillTypeComboBox->addItem("NonZero", static_cast<int>(PatternFillType::NonZero));
     m_bottomLeftFillTypeComboBox->addItem("EvenOdd", static_cast<int>(PatternFillType::EvenOdd));
+    m_bottomLeftFillTypeComboBox->addItem("Positive", static_cast<int>(PatternFillType::Positive));
     m_bottomLeftFillTypeComboBox->addItem("Ignore", static_cast<int>(PatternFillType::Ignore));
     m_bottomLeftFillTypeComboBox->addItem("Specific Winding", static_cast<int>(PatternFillType::SpecificWinding));
     m_bottomLeftFillTypeComboBox->setCurrentIndex(0); // Default: NonZero
@@ -513,6 +516,8 @@ const tailor_visualization::IFillType* FourViewContainer::getClipFillType() cons
         return m_nonZeroFillType.get();
     case PatternFillType::EvenOdd:
         return m_evenOddFillType.get();
+    case PatternFillType::Positive:
+        return m_positiveFillType.get();
     case PatternFillType::Ignore:
         return m_ignoreFillType.get();
     case PatternFillType::SpecificWinding:
@@ -528,6 +533,8 @@ const tailor_visualization::IFillType* FourViewContainer::getSubjectFillType() c
         return m_nonZeroFillType.get();
     case PatternFillType::EvenOdd:
         return m_evenOddFillType.get();
+    case PatternFillType::Positive:
+        return m_positiveFillType.get();
     case PatternFillType::Ignore:
         return m_ignoreFillType.get();
     case PatternFillType::SpecificWinding:

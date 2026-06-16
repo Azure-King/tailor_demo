@@ -17,6 +17,7 @@ namespace tailor_visualization {
     class NonZeroFillTypeWrapper;
     class EvenOddFillTypeWrapper;
     class IgnoreFillTypeWrapper;
+    class PositiveFillTypeWrapper;
     class SpecificWindingFillTypeWrapper;
     class BooleanOperations;
 
@@ -42,6 +43,7 @@ enum class PatternFillType {
     NonZero,            // Non-zero fill rule
     EvenOdd,            // Even-odd fill rule
     Ignore,             // Ignore fill rule
+    Positive,           // Positive fill rule (winding > 0)
     SpecificWinding     // Specific winding number
 };
 
@@ -176,6 +178,7 @@ private:
     std::unique_ptr<tailor_visualization::NonZeroFillTypeWrapper> m_nonZeroFillType;
     std::unique_ptr<tailor_visualization::EvenOddFillTypeWrapper> m_evenOddFillType;
     std::unique_ptr<tailor_visualization::IgnoreFillTypeWrapper> m_ignoreFillType;
+    std::unique_ptr<tailor_visualization::PositiveFillTypeWrapper> m_positiveFillType;
     std::unique_ptr<tailor_visualization::SpecificWindingFillTypeWrapper> m_specificWindingFillTypeTopRight;
     std::unique_ptr<tailor_visualization::SpecificWindingFillTypeWrapper> m_specificWindingFillTypeBottomLeft;
 
